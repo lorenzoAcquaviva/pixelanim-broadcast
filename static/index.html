@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PixelAnim Broadcast</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+<div>PIXEL<span>ANIM</span> <small>BROADCAST</small></div>
+<div class="nav" id="nav">
+  <button id="openMonitor" type="button" class="small">📺 Monitor</button>
+  <button id="openPlaylist" type="button" class="small">☰ Palinsesto</button>
+  <button id="openNodes" type="button" class="small">◈ Nodi</button>
+  <button id="openSettings" type="button" class="small" title="Impostazioni">⚙ Impostazioni</button>
+  <button id="openStats" type="button" class="small">📊 Statistiche</button></div>
+</header>
+
+<main id="mainView">
+<section>
+<h2>ANIMAZIONE</h2>
+<div class="grid">
+<div><label for="anim">ANIMAZIONE SALVATA</label>
+<select id="anim"></select></div>
+<div><label for="fps">FPS (1–30)</label>
+<input id="fps" type="number" min="1" max="30" value="8"></div>
+</div>
+<p id="info">Caricamento…</p>
+<label class="check"><input id="showPreview" type="checkbox"> Mostra anteprima compatta</label>
+<div id="previewArea" class="hidden"><div id="preview" data-width="8"></div><p id="previewInfo" class="muted">Anteprima del primo frame</p></div>
+</section>
+
+<section>
+<h2>DISPOSITIVO ESPHOME</h2>
+<label for="device">BOARD</label>
+<select id="device"><option value="">Seleziona una board…</option></select>
+<p class="muted">Le board si gestiscono da ⚙ Impostazioni.</p>
+<div class="grid" style="margin-top:18px">
+<div><label for="color">COLORE</label><input id="color" type="color" value="#00ff66"></div>
+<div><label for="brightness">LUMINOSITÀ %</label><input id="brightness" type="number" min="1" max="100" value="100"></div>
+</div>
+<div class="grid">
+<label class="check"><input id="rotate" type="checkbox"> Ruota 180°</label>
+<label class="check"><input id="loop" type="checkbox" checked> Ripeti in loop</label>
+</div>
+<div class="grid"><label class="check"><input id="usePalette" type="checkbox" checked> Usa la palette (board a colori)</label></div>
+<div class="actions"><button id="play" type="button">▶ PLAY</button><button id="stop" type="button">■ STOP</button></div>
+<div id="status">Pronto.</div>
+</section>
+</main>
+
+<main id="monitorView" class="hidden">
+<section>
+  <div class="actions" style="margin:0 0 14px"><button id="backFromMonitor" type="button" class="small">← Indietro</button></div>
+  <h2>MONITOR TRASMISSIONE</h2>
+  <p class="muted">Attiva i monitor per vedere in tempo reale i pixel inviati alle board. Usa <b>■ STOP</b> / <b>▶ PLAY</b> per fermare o avviare l'animazione sulla board.</p>
+  <div id="monitorGrid" class="monitor-grid"></div>
+  <div id="monitorStatus" class="muted"></div>
+</section>
+</main>
+
+<main id="playlistView" class="hidden">
+<section>
+<div class="actions" style="margin:0 0 14px"><button id="backFromPlaylist" type="button" class="small">← Indietro</button></div>
+<h2>PALINSESTO</h2>
+<label for="plDevice">BOARD</label>
+<select id="plDevice"></select>
+<div id="plBoardInfo" class="muted" style="margin-top:8px"></div>
+<label class="check" style="margin:10px 0 0"><input id="plAutostart" type="checkbox"> Avvia questo palinsesto automaticamente quando parte Broadcast</label>
+<div id="plRun" class="muted"></div>
+<p id="plNote" class="muted hidden">Board a colori: con <b>Palette</b> attiva i pixel usano i colori della palette.</p>
+<div id="plItems"></div>
+<div class="actions" style="margin-top:12px">
+<button id="plAdd" type="button" class="small">＋ Animazione</button>
+<button id="plAddText" type="button" class="small">＋ Testo</button>
+<button id="plAddClock" type="button" class="small">＋ Orologio</button>
+<button id="plAddPause" type="button" class="small">＋ Pausa</button>
+<button id="plAddGraph" type="button" class="small">＋ Grafo</button>
+<button id="plSave" type="button" class="small">💾 Salva</button>
+<button id="plStart" type="button" class="small">▶ Avvia</button>
+<button id="plStop" type="button" class="small">■ Ferma</button>
+</div>
+<div style="border-top:1px solid #2d3a4b;margin-top:16px;padding-top:16px">
+<h2>COPIA DA UN'ALTRA BOARD</h2>
+<div class="grid">
+<div><label for="plSource">BOARD DI ORIGINE</label><select id="plSource"></select></div>
+<div class="actions" style="margin:0;align-items:flex-end">
+<button id="plReplace" type="button" class="small">Sostituisci</button>
+<button id="plAppend" type="button" class="small">Aggiungi in coda</button>
+</div>
+</div>
+</div>
+<div id="plStatus"></div>
+</section>
+</main>
+
+<main id="nodesView" class="hidden">
+<section>
+<div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:14px;">
+  <button id="backFromNodes" type="button" class="small" style="margin:0;">← Indietro</button>
+  <h2 style="margin:0; flex:1;">NODI · ANIMAZIONI ALGORITMICHE</h2>
+  <span id="ngDirty" class="muted" style="margin-left:auto; font-weight:normal; letter-spacing:0;"></span>
+</div>
+
+<div class="grid" style="margin-bottom:10px;">
+  <div><label for="ngSelect">GRAFO</label><select id="ngSelect"></select></div>
+  <div><label for="ngName">NOME</label><input id="ngName" maxlength="60" value="Nuovo grafo"></div>
+</div>
+
+<div class="actions" style="margin:0 0 12px; align-items:center; gap:8px;">
+  <button id="ngSave" type="button" class="small">💾 Salva</button>
+  <button id="ngDup" type="button" class="small">Duplica</button>
+  <button id="ngDel" type="button" class="small danger">Elimina</button>
+  <button id="ngResetView" type="button" class="small" title="Inquadra tutti i nodi">⌖ Inquadra</button>
+  <button id="ngCollapseAll" type="button" class="small" title="Comprimi tutti i nodi">▸ Comprimi</button>
+  <button id="ngExpandAll" type="button" class="small" title="Espandi tutti i nodi">▾ Espandi</button>
+  <input id="ngImportFile" type="file" accept=".json,application/json" class="hidden">
+  <details class="ngadd-menu ngfile-menu">
+    <summary>⇅ Esporta / Importa</summary>
+    <div class="ngadd-content">
+      <div class="ngadd-group">
+        <h4>Esporta</h4>
+        <button id="ngExport" type="button" class="ngitem" title="Scarica il grafo aperto come file JSON">⬇ Grafo aperto</button>
+        <button id="ngExportAll" type="button" class="ngitem" title="Scarica tutti i grafi salvati in un unico file JSON (backup)">⬇ Tutti i grafi (backup)</button>
+      </div>
+      <div class="ngadd-group">
+        <h4>Importa</h4>
+        <button id="ngImport" type="button" class="ngitem" title="Carica un grafo (o un backup) da file JSON">⬆ Da file JSON…</button>
+      </div>
+    </div>
+  </details>
+  <details class="ngadd-menu">
+    <summary>＋ Aggiungi nodo</summary>
+    <div class="ngadd-content">
+      <div class="ngadd-group">
+        <h4>Generatori</h4>
+        <button type="button" class="ngadd" data-type="pixel">Pixel</button>
+        <button type="button" class="ngadd" data-type="rect">Rettangolo</button>
+        <button type="button" class="ngadd" data-type="circle">Cerchio</button>
+        <button type="button" class="ngadd" data-type="gradient">Gradiente</button>
+        <button type="button" class="ngadd" data-type="bitmap">Bitmap</button>
+        <button type="button" class="ngadd" data-type="text">Testo</button>
+        <button type="button" class="ngadd" data-type="clock">Orologio</button>
+        <button type="button" class="ngadd" data-type="subgraph" title="Incorpora un altro grafo salvato">Grafo</button>
+        <button type="button" class="ngadd" data-type="animation" title="Inserisce un'animazione di PixelAnim">Animazione</button>
+        <button type="button" class="ngadd" data-type="algo" title="Script Python che calcola i pixel da accendere">Algoritmico</button>
+      </div>
+      <div class="ngadd-group">
+        <h4>Valori</h4>
+        <button type="button" class="ngadd" data-type="time">Tempo</button>
+        <button type="button" class="ngadd" data-type="random">Casuale</button>
+        <button type="button" class="ngadd" data-type="width">Larghezza</button>
+        <button type="button" class="ngadd" data-type="math">Matematica</button>
+      </div>
+      <div class="ngadd-group">
+        <h4>Elabora</h4>
+        <button type="button" class="ngadd" data-type="repeat">Ripetizioni</button>
+        <button type="button" class="ngadd" data-type="combine">Combina</button>
+        <button type="button" class="ngadd" data-type="color">Colora</button>
+      </div>
+      <div class="ngadd-group">
+        <h4>Trasforma</h4>
+        <button type="button" class="ngadd" data-type="move">Muovi</button>
+        <button type="button" class="ngadd" data-type="rotate">Ruota</button>
+        <button type="button" class="ngadd" data-type="scale">Scala</button>
+        <button type="button" class="ngadd" data-type="mirror">Specchia</button>
+        <button type="button" class="ngadd" data-type="blink">Lampeggia</button>
+        <button type="button" class="ngadd" data-type="trail">Scia</button>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div id="ngWrap"><div id="ngInner"><svg id="ngWires" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+<p class="muted">
+  Trascina l'<b>header</b> per muovere i nodi. <b>Rotella</b>: zoom. Trascina in <b>zona vuota</b>: pan.
+  <b>Pallina verde</b> → <b>Uscita</b>: disegno diretto. <b>Pallina viola/gialla/azzurra/verde</b> → <b>pallina blu</b>: binding parametro. Il nodo <b>Larghezza</b> misura in pixel ciò che gli arriva dall'ingresso (testo, bitmap o qualsiasi nodo di disegno) e può pilotare X, Y, Largh., Alt., ecc. di altri nodi. Il nodo <b>Matematica</b> calcola A + − × ÷ B: A e B sono numeri oppure si legano (porte blu) a Tempo, Casuale, Larghezza o a un altro nodo Matematica; i decimali vengono arrotondati quando il risultato pilota un parametro. Il nodo <b>Grafo</b> incorpora un altro grafo già salvato (nella sua dimensione, es. 8×8) e lo posiziona in X/Y sulla board; usa la versione salvata del grafo, quindi dopo averlo modificato salvalo. Il nodo <b>Animazione</b> inserisce un'animazione di PixelAnim (colori della palette o monocromatica), la posiziona in X/Y e la ripete in loop, un frame per ogni frame del grafo (<i>Rallenta ×</i> li rallenta).
+  Il nodo <b>Algoritmico</b> espone ingressi numerici <code>in1</code>/<code>in2</code> e uscite <code>out1</code>/<code>out2</code> leggibili e scrivibili dallo script Python; le uscite viola 1 e 2 si collegano separatamente alle porte blu.
+  Ogni nodo ha un range <b>DA</b>/<b>A</b> in secondi per attivarsi solo in una finestra del ciclo.
+</p>
+</section>
+<aside id="ngPreviewPanel" class="hidden">
+<h3>ANTEPRIMA</h3>
+<canvas id="ngPreview" width="192" height="192"></canvas>
+<div id="ngInfo" class="muted"></div>
+<div class="pvRow">
+<div><label for="ngSize">MISURE</label><select id="ngSize"><option value="8x8">8×8</option><option value="32x8">32×8</option></select></div>
+<div><label for="ngFps">FPS</label><input id="ngFps" type="number" min="1" max="30" value="8"></div>
+</div>
+<h3>PROVA SU BOARD</h3>
+<div><label for="ngBoard">BOARD</label><select id="ngBoard"></select></div>
+<div><label for="ngColor">COLORE (mono)</label><input id="ngColor" type="color" value="#00ff66"></div>
+<div class="actions"><button id="ngPlay" type="button" class="small">▶ Prova</button><button id="ngStop" type="button" class="small">■ Ferma</button></div>
+<div id="ngStatus"></div>
+</aside>
+</main>
+
+<main id="settingsView" class="hidden">
+<section>
+<h2>LINGUA / LANGUAGE</h2>
+<p class="muted">Scegli la lingua dell’interfaccia.</p>
+<div class="grid"><div><label for="languageSelect">LINGUA</label><select id="languageSelect"><option value="it">Italiano</option><option value="en">English</option></select></div></div>
+</section>
+<section>
+<div class="actions" style="margin:0 0 14px"><button id="backMain" type="button" class="small">← Indietro</button></div>
+<h2>BOARD</h2>
+<p class="muted">Definisci le board ESPHome raggiungibili.</p>
+<div id="boardList"></div>
+<div class="actions" style="margin-top:12px"><button id="newDevice" type="button" class="small">＋ Nuova board</button></div>
+<div id="deviceForm" class="hidden">
+<h2 id="formTitle">NUOVA BOARD</h2>
+<div class="grid">
+<div><label for="deviceName">NOME</label><input id="deviceName" maxlength="80" placeholder="Matrice soggiorno"></div>
+<div><label for="deviceHost">HOST (IP O NOME)</label><input id="deviceHost" placeholder="192.168.1.100" autocapitalize="off" spellcheck="false"></div>
+<div><label for="devicePort">PORTA API</label><input id="devicePort" type="number" value="6053" min="1" max="65535"></div>
+<div><label for="deviceKey">CHIAVE noise_psk</label><input id="deviceKey" type="password" autocomplete="new-password"></div>
+<div><label for="deviceWidth">LARGHEZZA (LED)</label><select id="deviceWidth"><option>8</option><option>16</option><option>32</option></select></div>
+<div><label for="deviceHeight">ALTEZZA (LED)</label><select id="deviceHeight"><option>8</option><option>16</option></select></div>
+<div><label for="deviceColor">TIPO</label><select id="deviceColor"><option value="0">Monocromatica</option><option value="1">A colori (palette)</option></select></div>
+<div><label for="deviceRotate">ORIENTAMENTO</label><select id="deviceRotate"><option value="0">Normale</option><option value="1">Ruotata di 180°</option></select></div>
+<div><label for="deviceTextFps">FPS TESTO (1–30)</label><input id="deviceTextFps" type="number" min="1" max="30" value="10"></div>
+</div>
+<div class="actions"><button id="saveDevice" type="button">Salva board</button><button id="cancelDevice" type="button">Annulla</button></div>
+</div>
+<div id="settingsStatus"></div>
+</section>
+<section>
+<h2>PALETTE COLORI</h2>
+<div id="paletteGrid" class="pal"></div>
+<div class="actions" style="margin-top:0"><button id="savePalette" type="button" class="small">💾 Salva palette</button></div>
+<div id="paletteStatus"></div>
+</section>
+<section>
+<h2>MESSAGGI PRIORITARI (n8n)</h2>
+<pre class="doc" id="msgDoc"></pre>
+<div class="grid">
+<div><label for="msgDevice">BOARD</label><select id="msgDevice"></select></div>
+<div><label for="msgText">TESTO DI PROVA</label><input id="msgText" maxlength="200" placeholder="Messaggio di prova"></div>
+</div>
+<div class="actions"><button id="msgSend" type="button" class="small">✉ Invia messaggio di prova</button></div>
+<div id="msgStatus"></div>
+<div style="border-top:1px solid #2d3a4b;margin-top:18px;padding-top:14px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <h2 style="margin:0;flex:1">CODA MESSAGGI DELLA BOARD</h2>
+    <button id="msgQueueRefresh" type="button" class="small">↻ Aggiorna</button>
+    <button id="msgQueueClear" type="button" class="small danger">Svuota coda</button>
+  </div>
+  <p class="muted">I messaggi già in riproduzione non sono modificabili; puoi modificare o eliminare quelli ancora in attesa.</p>
+  <div id="msgQueueList"></div><div id="msgQueueStatus" class="muted"></div>
+</div>
+</section>
+</main>
+
+<main id="statsView" class="hidden">
+<section>
+  <div class="actions" style="margin:0 0 14px;justify-content:space-between;align-items:center">
+    <button id="backFromStats" type="button" class="small">← Indietro</button>
+    <button id="refreshStats" type="button" class="small" style="background:#39c98a;color:#0b1016">🔄 Aggiorna</button>
+  </div>
+  <h2>STATISTICHE &amp; RUNTIME</h2>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px">
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <div class="muted">UPTIME</div>
+      <div id="st-uptime" style="font-size:18px;font-weight:bold;color:#39c98a;margin-top:4px">-</div>
+    </div>
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <div class="muted">CACHE HIT RATE</div>
+      <div id="st-hitrate" style="font-size:18px;font-weight:bold;color:#39c98a;margin-top:4px">-</div>
+    </div>
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <div class="muted">RENDER TOTALI</div>
+      <div id="st-rendertotal" style="font-size:18px;font-weight:bold;color:#e8eef7;margin-top:4px">-</div>
+    </div>
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <div class="muted">DURATA MEDIA (P95)</div>
+      <div id="st-avgdur" style="font-size:18px;font-weight:bold;color:#ffd21f;margin-top:4px">-</div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-bottom:16px">
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <h2 style="margin-top:0">CACHE RENDER</h2>
+      <ul id="st-cache-list" style="margin:0;padding-left:18px;line-height:1.7;font-size:13px"></ul>
+    </div>
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <h2 style="margin-top:0">CACHE PALETTE</h2>
+      <ul id="st-palette-cache-list" style="margin:0;padding-left:18px;line-height:1.7;font-size:13px"></ul>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-bottom:16px">
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <h2 style="margin-top:0">CACHE ANIMAZIONI &amp; RAM</h2>
+      <ul id="st-anim-cache-list" style="margin:0;padding-left:18px;line-height:1.7;font-size:13px"></ul>
+    </div>
+    <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+      <h2 style="margin-top:0">RIPRODUZIONI &amp; SCOPE</h2>
+      <ul id="st-play-list" style="margin:0;padding-left:18px;line-height:1.7;font-size:13px"></ul>
+    </div>
+  </div>
+
+  <div style="background:#101720;border:1px solid #2d3a4b;border-radius:8px;padding:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+      <h2 style="margin:0">ULTIMI ERRORI REGISTRATI</h2>
+      <button id="clearStatsErrors" type="button" class="small danger" style="padding:4px 10px;font-size:12px">🗑 Svuota</button>
+    </div>
+    <div id="st-errors" style="font-family:monospace;font-size:12px;color:#ff7b72;max-height:160px;overflow-y:auto">
+      Nessun errore recente.
+    </div>
+  </div>
+</section>
+</main>
+
+<div id="algoModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="algoTitle">
+  <div class="box">
+    <div class="top">
+      <h3 id="algoTitle">SCRIPT ALGORITMICO</h3>
+      <select id="algoExamples" title="Carica uno script di esempio"><option value="">Esempi…</option></select>
+      <button id="algoClose" type="button" class="small">✓ Chiudi</button>
+    </div>
+    <div class="cols">
+      <div class="editor"><div id="algoGutter" aria-hidden="true"></div><textarea id="algoText" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea></div>
+      <div class="side">
+        <h4>ANTEPRIMA DEL GRAFO</h4>
+        <canvas id="algoPrev" width="192" height="192"></canvas>
+        <div><label for="algoSize" style="font-size:10px;margin-bottom:3px">MISURE ANTEPRIMA</label><select id="algoSize"></select></div>
+        <div id="algoErr" class="ok"></div>
+        <h4>RIFERIMENTO</h4>
+        <div id="algoRef">
+          Lo script gira <b>una volta per frame</b>. Le variabili restano tra un frame e l'altro: inizializza con <code>if k == 0:</code>.<br>
+          <b>Variabili</b>: <code>W</code> <code>H</code> dimensione · <code>k</code> frame (0…N-1) · <code>N</code> frame del ciclo · <code>t</code> secondi · <code>fps</code> · <code>seed</code><br>
+          <b>Ingressi</b>: leggi <code>in1</code> e <code>in2</code> (impostabili o collegabili dal grafo).<br>
+          <b>Uscite</b>: assegna <code>out1 = valore</code> e <code>out2 = valore</code>; collegale dalle due porte viola numerate 1 e 2.<br>
+          <b>Disegno</b> (<code>c</code> = colore 0-15, se omesso usa il colore del nodo):<br>
+          <code>pixel(x, y, c)</code> · <code>rect(x, y, w, h, c, fill)</code> · <code>line(x0, y0, x1, y1, c)</code> · <code>circle(cx, cy, r, c, fill)</code> · <code>get(x, y)</code> · <code>clear()</code><br>
+          <b>Matematica</b>: <code>sin cos tan atan2 sqrt floor ceil hypot radians degrees exp log pi</code> e <code>math.*</code><br>
+          <b>Casuali</b> (con seed fisso, quindi ripetibili): <code>rand()</code> · <code>randint(a, b)</code> · <code>choice(lista)</code><br>
+          <b>Non consentiti</b>: <code>import</code> · <code>try</code> · <code>class</code> · <code>open</code> · nomi che iniziano con <code>_</code>. Limite di tempo: pochi secondi per script.
+        </div>
+      </div>
+    </div>
+    <div class="bottom">Tab = rientro · Maiusc+Tab = riduce · Esc = chiude · le modifiche si applicano da sole mentre scrivi.</div>
+  </div>
+</div>
+
+<script src="/static/i18n.js" defer></script>
+<script src="/static/app.js" defer></script>
+</body>
+</html>
