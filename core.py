@@ -2679,6 +2679,7 @@ async def message_worker(device_id):
 async def playlist_runner(device_id, override=None):
     st = runner_status[device_id] = {"running": True, "index": None, "total": 0, "error": None}
     link = None
+    last_idx = None
     try:
         while True:
             items = override if override is not None else playlist_items(device_id)
@@ -2686,7 +2687,8 @@ async def playlist_runner(device_id, override=None):
             if not items:
                 st["error"] = "Palinsesto vuoto"
                 return
-            if not any(it.get("enabled", True) for it in items):
+            active = [(i, it) for i, it in enumerate(items) if it.get("enabled", True)]
+            if not active:
                 st["index"], st["error"] = None, "Nessun elemento attivo"
                 try:
                     if message_queues.get(device_id):
@@ -2703,7 +2705,20 @@ async def playlist_runner(device_id, override=None):
                     links.pop(device_id, None)
                 await wait_tick(device_id, 2.0)
                 continue
-            for idx, item in enumerate(items):
+
+            # Costruisce la coda del giro corrente (sequenziale o casuale)
+            dev_check = get_device(device_id)
+            if dev_check is None:
+                st["error"] = "Board eliminata"
+                return
+
+            if dict(dev_check).get("shuffle") and len(active) > 1:
+                pool = [pair for pair in active if pair[0] != last_idx] or active
+                step_list = [random.choice(pool)]
+            else:
+                step_list = active
+
+            for idx, item in step_list:
                 if not item.get("enabled", True):
                     continue
                 try:
@@ -2711,9 +2726,14 @@ async def playlist_runner(device_id, override=None):
                     if device is None:
                         st["error"] = "Board eliminata"
                         return
+                    # Se nel frattempo lo shuffle è stato attivato durante un giro sequenziale, interrompe il giro per ricalcolare
+                    if len(step_list) > 1 and dict(device).get("shuffle"):
+                        break
                     if message_queues.get(device_id):
                         link = await deliver_messages(device_id, dict(device), link)
+                    log.info(f"[playlist] device={device_id} idx={idx + 1}/{len(items)} shuffle={bool(dict(device).get('shuffle'))}")
                     link, _ = await play_item(dict(device), item, link)
+                    last_idx = idx
                     if link is not None:
                         links[device_id] = link
                     else:
@@ -2768,7 +2788,6 @@ async def playlist_runner(device_id, override=None):
             await link.close()
         if links.get(device_id) is link:
             links.pop(device_id, None)
-
 
 @asynccontextmanager
 async def lifespan(app):

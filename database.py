@@ -28,7 +28,8 @@ def init_devices_db():
             port INTEGER NOT NULL DEFAULT 6053, api_key TEXT NOT NULL,
             width INTEGER NOT NULL DEFAULT 8, height INTEGER NOT NULL DEFAULT 8,
             color INTEGER NOT NULL DEFAULT 0, rotate INTEGER NOT NULL DEFAULT 0,
-            autostart INTEGER NOT NULL DEFAULT 0, text_fps INTEGER NOT NULL DEFAULT 10)""")
+            autostart INTEGER NOT NULL DEFAULT 0, shuffle INTEGER NOT NULL DEFAULT 0,
+            text_fps INTEGER NOT NULL DEFAULT 10)""")
         cols = {r[1] for r in db.execute("PRAGMA table_info(devices)")}
         if "ip" in cols and "host" not in cols:
             db.execute("ALTER TABLE devices RENAME COLUMN ip TO host")
@@ -37,6 +38,7 @@ def init_devices_db():
                           ("color", "INTEGER NOT NULL DEFAULT 0"),
                           ("rotate", "INTEGER NOT NULL DEFAULT 0"),
                           ("autostart", "INTEGER NOT NULL DEFAULT 0"),
+                          ("shuffle", "INTEGER NOT NULL DEFAULT 0"),
                           ("text_fps", "INTEGER NOT NULL DEFAULT 10")):
             if name not in cols:
                 db.execute(f"ALTER TABLE devices ADD COLUMN {name} {ddl}")
@@ -83,7 +85,9 @@ def public_device(row):
             "port": row["port"], "has_key": bool(row["api_key"]),
             "width": row["width"], "height": row["height"],
             "color": bool(row["color"]), "rotate": bool(row["rotate"]),
-            "autostart": bool(row["autostart"]), "text_fps": row["text_fps"]}
+            "autostart": bool(row["autostart"]),
+            "shuffle": bool(row["shuffle"]) if "shuffle" in row.keys() else False,
+            "text_fps": row["text_fps"]}
 
 
 def autostart_devices():

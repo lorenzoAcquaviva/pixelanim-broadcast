@@ -197,6 +197,14 @@ async def set_autostart(device_id: int, req: AutostartRequest):
         db.commit()
     return {"autostart": req.enabled}
 
+@router.put("/api/devices/{device_id}/shuffle")
+async def set_shuffle(device_id: int, req: AutostartRequest):
+    require_device(device_id)
+    with device_db() as db:
+        db.execute("UPDATE devices SET shuffle=? WHERE id=?", (int(req.enabled), device_id))
+        db.commit()
+    return {"shuffle": req.enabled}
+
 
 @router.get("/api/devices/{device_id}/playlist")
 async def get_playlist(device_id: int):
