@@ -19,6 +19,8 @@ Tutte le modifiche rilevanti a questo progetto saranno documentate in questo fil
 
 ### Features
 
+- Aggiunto il nodo Viewport con coordinate X/Y bindabili per ritagliare dinamicamente grafi di dimensioni maggiori.
+
 - Enhance device management with color settings and palette support (217f3f3)
 - Aggiunto effetto pausa nel palinsesto (bfe3579)
 - Aggiunta opzione per partenza automatica (627a6de)

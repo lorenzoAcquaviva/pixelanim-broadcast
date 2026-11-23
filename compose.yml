@@ -7,7 +7,7 @@ services:
       - "${BROADCAST_PORT:-9910}:9910"
     environment:
       TZ: ${TZ:-Europe/Rome}
-      PIXELANIM_URL: ${PIXELANIM_URL:-http://pixelanim:9900}
+      PIXELANIM_URL: ${PIXELANIM_URL:?Set PIXELANIM_URL in .env}
       PIXELANIM_WS: ${PIXELANIM_WS:-}
       RENDER_WORKERS: ${RENDER_WORKERS:-2}
       RENDER_MP_METHOD: ${RENDER_MP_METHOD:-fork}
@@ -15,6 +15,6 @@ services:
       RENDER_RESULT_MAX: ${RENDER_RESULT_MAX:-8}
       RENDER_RESULT_MAX_FRAMES: ${RENDER_RESULT_MAX_FRAMES:-24000}
       PALETTE_CACHE_TTL: ${PALETTE_CACHE_TTL:-30}
-      LOG_FILE: ${LOG_FILE:-/data/pixelanim.log}
+      LOG_FILE: /data/pixelanim.log
     volumes:
       - ./data:/data

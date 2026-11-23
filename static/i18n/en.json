@@ -316,5 +316,13 @@
   "🔄 Aggiorna": "🔄 Refresh",
   "🗑 Svuota": "🗑 Clear",
   "✓ Chiudi": "✓ Close",
-  ": zoom. Trascina in": ": zoom. Drag in"
+  ": zoom. Trascina in": ": zoom. Drag in",
+  "Riproduzione casuale (shuffle)": "Random Playback",
+  "Riproduzione casuale attivata.": "Random Playback enabled",
+  "Riproduzione casuale disattivata.": "Random Playback disabled",
+  "Mostra una porzione mobile di un grafo più grande": "Show a movable window of a larger graph",
+  "Il nodo Viewport riceve in ingresso un nodo Grafo e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate X e Y sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.": "The Viewport node takes a Graph node as input and displays a window matching the preview/board dimensions. X and Y can be connected to Time, Random, Math, or Algorithmic outputs to move the window dynamically.",
+  "Il Viewport accetta come sorgente un nodo Grafo.": "The Viewport accepts a Graph node as its source.",
+  "Ingresso IN": "Input IN",
+  "Viewport": "Viewport"
 }

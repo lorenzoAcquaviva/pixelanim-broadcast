@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+compose.local.yml
+compose.override.yml
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+
+.pixelanim-public-export

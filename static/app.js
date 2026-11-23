@@ -655,8 +655,8 @@ async function clearMessageQueue(){
 /* NODI */
 const SVGNS='http://www.w3.org/2000/svg';
 const NG_ALIGN=[['left','Sinistra'],['center','Centro'],['right','Destra']];
-const NG_DRAW_TYPES=['pixel','rect','gradient','bitmap','circle','text','clock','subgraph','animation','algo'];
-const NG_MOD_TYPES=['repeat','combine','color','move','rotate','scale','mirror','blink','trail'];
+const NG_DRAW_TYPES=['pixel','rect','gradient','bitmap','circle','text','clock','subgraph','animation','algo','viewport'];
+const NG_MOD_TYPES=['repeat','combine','color','move','rotate','scale','mirror','blink','trail','viewport'];
 const NG_VALUE_TYPES=['time','random','width','math','algo'];
 const NG_CALC_TYPES=['width','math','algo'];   // valori calcolati dal backend, non in JS
 const NG_TYPES={
@@ -671,6 +671,7 @@ const NG_TYPES={
   random:{title:'Casuale',num:[['min','Min',-256,256],['max','Max',-256,256],['step','Cambia ogni N frame',1,256],['quantize','Passo',0,256],['seed','Seed',0,99999]],def:{min:0,max:7,step:1,quantize:1,seed:1}},  
   animation:{title:'Animazione',sel:[['anim_id','Animazione PixelAnim',animationOptions],['modo','Colori',[['color','Colori della palette'],['mono','Monocromatico']]]],num:[['x','X',-256,256],['y','Y',-256,256],['hold','Rallenta ×',1,60]],bind:['x','y'],color:true,colorLabel:'COLORE (MONOCROMATICO)',def:{anim_id:0,anim_name:'',modo:'color',hold:1,x:0,y:0,color:1}},
   subgraph:{title:'Grafo',sel:[['graph_id','Grafo salvato',subgraphOptions],['size','Dimensione del grafo',[['8x8','8×8'],['16x8','16×8'],['32x8','32×8'],['8x16','8×16'],['16x16','16×16'],['32x16','32×16']]],['modo','Colori',[['color','Colori del grafo'],['mono','Monocromatico']]]],num:[['x','X',-256,256],['y','Y',-256,256]],bind:['x','y'],color:true,colorLabel:'COLORE (MONOCROMATICO)',def:{graph_id:0,graph_name:'',size:'8x8',modo:'color',x:0,y:0,color:1}},
+  viewport:{title:'Viewport',num:[['x','X',0,256],['y','Y',0,256]],bind:['x','y'],ins:['in'],def:{x:0,y:0}},
   width:{title:'Larghezza',sel:[['misura','Misura',[['ink','Pixel accesi'],['box','Ingombro']]]],num:[['offset','Offset (px)',-256,256]],ins:['in'],readout:true,unit:'px',def:{misura:'ink',offset:0}},
   math:{title:'Matematica',sel:[['op','Operazione',[['add','A + B'],['sub','A − B'],['mul','A × B'],['div','A ÷ B']]]],num:[['va','A',-1000000,1000000],['vb','B',-1000000,1000000]],bind:['va','vb'],float:true,readout:true,unit:'',def:{op:'add',va:0,vb:1}},
   repeat:{title:'Ripetizioni',sel:[['color_mode','Colore',[['override','Cambia colore'],['original','Mantieni colore']]]],num:[['x','X',-256,256],['y','Y',-256,256],['nx','N.x',1,32],['ny','N.y',1,32],['dx','Δx',-256,256],['dy','Δy',-256,256],['color_start','Colore iniz.',0,15],['color_step','Passo colore',-15,15]],bind:['x','y','dx','dy','nx','ny'],ins:['in'],def:{x:0,y:0,nx:3,ny:3,dx:8,dy:8,color_mode:'override',color_start:1,color_step:1}},
@@ -1002,6 +1003,7 @@ function nodeSummaryBase(n){
   if (n.type === 'random')    return `Casuale [${p.min ?? 0}..${p.max ?? 31}] ogni ${p.step ?? 1} fr` + rng;
   if (n.type === 'animation') return `Animazione: ${p.anim_name || '—'} (${p.modo === 'mono' ? 'monocromatico' : 'palette'}${Number(p.hold) > 1 ? ', ×' + p.hold : ''})` + rng;
   if (n.type === 'subgraph')  return `Grafo: ${p.graph_name || '—'} (${p.size || '8x8'}, ${p.modo === 'mono' ? 'monocromatico' : 'colori'})` + rng;
+  if (n.type === 'viewport')  return `Viewport X:${p.x ?? 0} Y:${p.y ?? 0}` + rng;
   if (n.type === 'algo')      return `Algoritmico ${p.w ?? 8}×${p.h ?? 8}, ${p.frames ?? 32} fr` + rng;
   if (n.type === 'math')      return `Matematica (A ${({add:'+',sub:'−',mul:'×',div:'÷'})[p.op] || '+'} B)` + rng;
   if (n.type === 'width')     return `Larghezza (${p.misura === 'box' ? 'ingombro' : 'pixel accesi'})` + rng;
@@ -1431,6 +1433,8 @@ function startLink(e,fromId,fromPort=null){
       const toId=portEl.dataset.for,port=portEl.dataset.port;
       if(linkMakesCycle(fromId,toId)){ ngStatus('Collegamento non valido: creerebbe un anello.'); return; }
       if(['in','a','b'].includes(port)){
+        const dst=ng.graph.nodes.find(x=>x.id===toId);
+        if(dst?.type==='viewport' && src.type!=='subgraph'){ ngStatus('Il Viewport accetta come sorgente un nodo Grafo.'); return; }
         if(!NG_DRAW_TYPES.includes(src.type) && !NG_MOD_TYPES.includes(src.type)){
           ngStatus('Questa porta accetta solo nodi di disegno o modificatori.'); return;
         }
@@ -1822,6 +1826,7 @@ function renderPlaylist(){
   $('plBoardInfo').textContent=bd?`Board: ${bd.width}×${bd.height} · ${bd.color?'a colori':'monocromatica'}${bd.rotate?' · orientamento ruotato 180°':''}`:'';
   $('plNote').classList.toggle('hidden',!plIsColor());
   $('plAutostart').checked=!!bd?.autostart;$('plAutostart').disabled=!bd;
+  $('plShuffle').checked=!!bd?.shuffle;$('plShuffle').disabled=!bd;
   if(!plItems.length){const p=document.createElement('p');p.className='muted';p.textContent='Palinsesto vuoto.';box.appendChild(p);return}
   plItems.forEach((it,i)=>{
     const t=itemType(it);
@@ -2204,6 +2209,18 @@ $('plAutostart').onchange=async()=>{
   const on=$('plAutostart').checked;
   try{await api(`/api/devices/${d.id}/autostart`,{method:'PUT',headers:JSONH,body:JSON.stringify({enabled:on})});d.autostart=on;$('plStatus').textContent=on?'Autostart attivato.':'Autostart disattivato.'}
   catch(e){$('plAutostart').checked=!on;$('plStatus').textContent='Errore: '+e.message}
+};
+$('plShuffle').onchange=async()=>{
+  const d=devices.find(x=>String(x.id)===plDid());if(!d)return;
+  const on=$('plShuffle').checked;
+  try{
+    await api(`/api/devices/${d.id}/shuffle`,{method:'PUT',headers:JSONH,body:JSON.stringify({enabled:on})});
+    d.shuffle=on;
+    $('plStatus').textContent=on?'Riproduzione casuale attivata.':'Riproduzione casuale disattivata.';
+  }catch(e){
+    $('plShuffle').checked=!on;
+    $('plStatus').textContent='Errore: '+e.message;
+  }
 };
 $('plAdd').onclick=()=>addItem('animation');
 $('plAddText').onclick=()=>addItem('text');

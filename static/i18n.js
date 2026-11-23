@@ -25,7 +25,8 @@
     [/^Board non trovata: (.*)$/u, {it:'Board non trovata: $1',en:'Board not found: $1'}],
     [/^Board (\d+)×(\d+) non supportata dal firmware$/u, {it:'Board $1×$2 non supportata dal firmware',en:'Board $1×$2 is not supported by the firmware'}],
     [/^Il grafo è incorporato in: (.*)$/u, {it:'Il grafo è incorporato in: $1',en:'The graph is embedded in: $1'}],
-    [/^File di log non trovato: (.*)$/u, {it:'File di log non trovato: $1',en:'Log file not found: $1'}]
+    [/^File di log non trovato: (.*)$/u, {it:'File di log non trovato: $1',en:'Log file not found: $1'}],
+    [/^Viewport X:(-?\\d+) Y:(-?\\d+)$/u, {it:'Viewport X:$1 Y:$2',en:'Viewport X:$1 Y:$2'}]
   ];
 
   function detectLanguage() {

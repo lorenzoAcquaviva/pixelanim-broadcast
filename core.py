@@ -597,8 +597,8 @@ GRAPH_VALUE_TYPES = GRAPH_SOURCE_TYPES | GRAPH_MEASURE_TYPES | GRAPH_DERIVED_TYP
 GRAPH_CALC_TYPES = GRAPH_MEASURE_TYPES | GRAPH_DERIVED_TYPES | {"algo"}
 GRAPH_ALGO_BIND_PORTS = {"in1", "in2"}
 GRAPH_MATH_OPS = {"add", "sub", "mul", "div"}
-GRAPH_DRAW_TYPES = {"pixel", "rect", "text", "clock", "gradient", "bitmap", "circle", "subgraph", "animation", "algo"}
-GRAPH_MOD_TYPES = {"repeat", "combine", "color", "move", "rotate", "scale", "mirror", "blink", "trail"}
+GRAPH_DRAW_TYPES = {"pixel", "rect", "text", "clock", "gradient", "bitmap", "circle", "subgraph", "animation", "algo", "viewport"}
+GRAPH_MOD_TYPES = {"repeat", "combine", "color", "move", "rotate", "scale", "mirror", "blink", "trail", "viewport"}
 GRAPH_OUT_TYPES = GRAPH_DRAW_TYPES.union(GRAPH_MOD_TYPES)
 GRAPH_NODE_TYPES = GRAPH_OUT_TYPES.union(GRAPH_VALUE_TYPES)
 GRAPH_TIME_MODES = {"linear", "pingpong", "sine"}
@@ -773,7 +773,7 @@ def graph_calc_nodes(graph):
 
 
 GRAPH_INPUT_KEYS = ("repeat", "combine_a", "combine_b", "color", "move", "rotate",
-                    "scale", "mirror", "blink", "trail", "width")
+                    "scale", "mirror", "blink", "trail", "width", "viewport")
 
 
 def graph_inputs(nodes, links):
@@ -944,6 +944,8 @@ def check_graph(graph):
                 raise HTTPException(400, "L'ingresso accetta solo nodi di disegno o modificatori")
             if to_node["type"] == "combine" and port not in ("a", "b"):
                 raise HTTPException(400, "Il nodo Combina accetta solo le porte 'a' e 'b'")
+            if to_node["type"] == "viewport" and frm_node["type"] != "subgraph":
+                raise HTTPException(400, "Il Viewport accetta come sorgente un nodo Grafo")
             if to_node["type"] != "combine" and port != "in":
                 raise HTTPException(400, f"Il nodo {to_node['type']} accetta solo la porta 'in'")
             continue
@@ -1690,6 +1692,35 @@ def _eval_node_matrix(node_id, k, ctx):
         if not _node_active_at(n, k / max(1, ctx["fps"])):
             ctx["cache"][cache_key] = matrix
             return matrix
+
+    if t == "viewport":
+        source_id = ctx["inputs"].get("viewport", {}).get(node_id)
+        source_node = ctx["nodes"].get(source_id) if source_id else None
+        source_frames = ctx["sub_frames"].get(source_id) if source_id else None
+        if source_node and source_frames and _node_active_at(source_node, k / max(1, ctx["fps"])):
+            source_frame = source_frames[k % len(source_frames)]
+            source_h = len(source_frame)
+            source_w = len(source_frame[0]) if source_h else 0
+            rb = ctx["binds"].get(node_id, {})
+            x0 = _resolve(p, "x", ctx["time_values"], rb, 0, max(0, source_w - width), 0)
+            y0 = _resolve(p, "y", ctx["time_values"], rb, 0, max(0, source_h - height), 0)
+            source_params = source_node.get("params") or {}
+            mono = source_params.get("modo") == "mono"
+            mono_color = _pi(source_params, "color", 0, 15, 1)
+            for yy in range(height):
+                sy = y0 + yy
+                if sy >= source_h:
+                    break
+                row = source_frame[sy]
+                for xx in range(width):
+                    sx = x0 + xx
+                    if sx >= source_w:
+                        break
+                    value = row[sx]
+                    if value:
+                        matrix[yy][xx] = mono_color if mono else value
+        ctx["cache"][cache_key] = matrix
+        return matrix
 
     if t in ("subgraph", "animation", "algo"):
         {"subgraph": _draw_subgraph, "animation": _draw_animation, "algo": _draw_algo}[t](matrix, n, k, ctx)

@@ -1,80 +1,82 @@
 # PixelAnim Broadcast
 
-Palinsesto e trasmissione in tempo reale per le **board LED ESPHome** (matrici 8×8, 16×16, 32×8, monocromatiche o a colori).
+Scheduling and real-time broadcasting for **ESPHome LED boards** (8×8, 16×16 and 32×8 matrices, monochrome or full-colour).
 
-Broadcast non disegna le animazioni da solo e non le salva nella RAM delle board: le **legge da PixelAnim**, le monta in un *palinsesto* (loop di elementi programmati) e le **trasmette in streaming** alle board, insieme a testo, orologio, pause e animazioni generate da **grafi a nodi**.
+Broadcast does not create animations itself or store them in the boards' RAM: it **reads them from PixelAnim**, arranges them into a *playlist* (a loop of scheduled items), and **streams them** to the boards, together with text, a clock, pauses and animations generated using **node graphs**.
 
-- Palinsesto per board: animazioni, testo, orologio, pause, grafi
-- Messaggi urgenti da altri sistemi (n8n, Home Assistant, script) con priorità sul palinsesto
-- Editor a nodi per animazioni algoritmiche (tempo, casualità, larghezza del testo, matematica…)
-- Monitor per vedere cosa sta mostrando ogni board
-- Avvio automatico del palinsesto all'accensione
-- Importazione/esportazione dei grafi in JSON
+- Per-board playlists: animations, text, clock, pauses and graphs
+- Urgent messages from other systems (n8n, Home Assistant, scripts), with priority over the playlist
+- Node editor for algorithmic animations (time, randomness, text width, mathematics, etc.)
+- Monitor showing what each board is displaying
+- Automatic playlist start when the application starts
+- JSON import/export for graphs
+
+[🇮🇹 Leggi in italiano](README.it.md)
 
 ---
 
-## Come funziona
+## How it works
 
 ```
-┌────────────┐  HTTP: elenco animazioni e frame   ┌────────────────────┐
+┌────────────┐  HTTP: animation and frame list   ┌────────────────────┐
 │  PixelAnim │◄───────────────────────────────────│                    │
 │  (:9900)   │                                    │  PixelAnim         │
 │            │◄──── WebSocket /api/esp/stream ────│  Broadcast (:9910) │
 └─────┬──────┘                                    │                    │
-      │ API nativa ESPHome (noise, :6053)         │  SQLite (/data)    │
+      │ Native ESPHome API (noise, :6053)         │  SQLite (/data)    │
       ▼                                           └─────────▲──────────┘
 ┌────────────┐                                              │  browser / n8n / curl
-│ Board LED  │                                              │
-└────────────┘                                          UI + API REST
+│ LED board  │                                              │
+└────────────┘                                          UI + REST API
 ```
 
-Broadcast chiede a PixelAnim di inviare i frame alle board attraverso il suo WebSocket `/api/esp/stream`; le board sono definite in Broadcast (IP o nome host, porta, chiave `noise_psk`, dimensioni, colore, rotazione).
+Broadcast asks PixelAnim to send frames to the boards through its `/api/esp/stream` WebSocket. Boards are configured in Broadcast (IP address or hostname, port, `noise_psk` key, dimensions, colour and rotation).
 
 ---
 
-## Requisiti
+## Requirements
 
-- Python 3.12+ (usa `zoneinfo`, `pydantic` v2 e `math.lcm`)
-- Un'istanza di **PixelAnim** raggiungibile via rete
-- Una o più board ESPHome con il firmware compatibile (servizi di streaming) e la chiave `noise_psk`
-- Dimensioni supportate dal firmware: **8×8, 32×8, 16×16** (vedi `FIRMWARE_DIMS` in `core.py`)
+- Python 3.12+ (uses `zoneinfo`, Pydantic v2 and `math.lcm`)
+- A **PixelAnim** instance reachable over the network
+- One or more ESPHome boards running compatible firmware (streaming services) and configured with the `noise_psk` key
+- Firmware-supported dimensions: **8×8, 32×8, 16×16** (see `FIRMWARE_DIMS` in `core.py`)
 
-Dipendenze Python: `fastapi`, `uvicorn`, `httpx`, `websockets`, `pydantic`, `tzdata`.
+Python dependencies: `fastapi`, `uvicorn`, `httpx`, `websockets`, `pydantic`, `tzdata`.
 
 ---
 
-## Struttura del progetto
+## Project structure
 
 ```
 .
-├── main.py              # avvio dell'applicazione FastAPI
-├── api.py               # endpoint REST
-├── core.py              # renderer, grafi e gestione palinsesti
-├── database.py          # accesso al database SQLite
+├── main.py              # FastAPI application entry point
+├── api.py               # REST endpoints
+├── core.py              # renderer, graphs and playlist management
+├── database.py          # SQLite database access
 ├── static/
-│   ├── index.html       # interfaccia web
-│   ├── app.js           # logica frontend
-│   ├── i18n.js          # gestione lingue
+│   ├── index.html       # web interface
+│   ├── app.js           # frontend logic
+│   ├── i18n.js          # language management
 │   ├── i18n/
-│   │   ├── it.json      # italiano
-│   │   └── en.json      # inglese
+│   │   ├── it.json      # Italian
+│   │   └── en.json      # English
 │   ├── style.css
 │   └── favicon.svg
-├── data/                # dati persistenti, esclusi da Git
+├── data/                # persistent data, excluded from Git
 ├── Dockerfile
 ├── compose.yml
 └── requirements.txt
 ```
 
-`main.py` avvia FastAPI e monta la cartella `static/`. Non è necessaria una fase di build del frontend.
+`main.py` starts FastAPI and serves the `static/` directory. No frontend build step is required.
 
 ---
 
-## Installazione
+## Installation
 
-### Docker (consigliato)
+### Docker (recommended)
 
-Clona il repository, crea il file di configurazione locale e avvia il servizio:
+Clone the repository, create the local configuration file and start the service:
 
 ```bash
 git clone https://github.com/OWNER/pixelanim-broadcast.git
@@ -83,36 +85,36 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Il servizio espone la porta `9910`. In `.env` imposta `PIXELANIM_URL` con l'indirizzo HTTP del backend PixelAnim. Se lasci `PIXELANIM_WS` vuota (impostazione predefinita), l'indirizzo WebSocket viene ricavato automaticamente: `http://` diventa `ws://` e `https://` diventa `wss://`, mantenendo il percorso `/api/esp/stream`. Imposta `PIXELANIM_WS` solo se il WebSocket usa un host o un percorso diverso.
+The service exposes port `9910`. In `.env`, set `PIXELANIM_URL` to the HTTP address of the PixelAnim backend. If `PIXELANIM_WS` is left empty (the default), the WebSocket address is derived automatically: `http://` becomes `ws://` and `https://` becomes `wss://`, while keeping the `/api/esp/stream` path. Set `PIXELANIM_WS` only if the WebSocket uses a different host or path.
 
-Esempio di backend su un altro server della LAN:
+Example with the backend running on another LAN server:
 
 ```dotenv
 PIXELANIM_URL=http://192.168.1.50:9900
 PIXELANIM_WS=
 ```
 
-Il backend deve essere raggiungibile e risolvibile **dal container Broadcast**, non soltanto dal browser o dal computer da cui apri la pagina.
+The backend must be reachable and resolvable **from inside the Broadcast container**, not just from the browser or the computer used to open the page.
 
-I dati persistenti (database e log) sono salvati in `./data`, che non deve essere pubblicata nel repository.
+Persistent data (database and logs) is stored in `./data`, which must not be published in the repository.
 
-#### Installazione dietro Traefik o altro reverse proxy
+#### Running behind Traefik or another reverse proxy
 
-Non modificare il Compose principale per inserire domini e middleware personali. Crea un override locale, escluso da Git:
+Do not edit the main Compose file to add personal domains or middleware. Create a local override, excluded from Git:
 
 ```bash
 cp compose.local.example.yml compose.local.yml
 ```
 
-Personalizza `compose.local.yml`, poi avvia con entrambi i file:
+Customize `compose.local.yml`, then start the service using both files:
 
 ```bash
 docker compose -f compose.yml -f compose.local.yml up -d --build
 ```
 
-`compose.local.yml` è escluso da `.gitignore`: contiene esclusivamente le personalizzazioni dell'installazione.
+`compose.local.yml` is excluded by `.gitignore`: it should contain only settings specific to your installation.
 
-### Senza Docker
+### Without Docker
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -122,219 +124,221 @@ export PIXELANIM_URL=http://localhost:9900
 uvicorn main:app --host 0.0.0.0 --port 9910
 ```
 
-Apri `http://localhost:9910`.
+Open `http://localhost:9910`.
 
 ---
 
-## Configurazione
+## Configuration
 
-Tutto si regola con variabili d'ambiente:
+All settings are controlled through environment variables:
 
-| Variabile | Default | Descrizione |
+| Variable | Default | Description |
 |---|---|---|
-| `PIXELANIM_URL` | `http://pixelanim:9900` | Indirizzo HTTP di PixelAnim (animazioni e frame) |
-| `PIXELANIM_WS` | derivata da `PIXELANIM_URL` + `/api/esp/stream` | Override facoltativo dell'indirizzo WebSocket |
-| `DEVICES_DB` | `/data/devices.db` | Percorso del database SQLite |
-| `TZ` | `Europe/Rome` | Fuso orario usato dall'orologio |
-| `BROADCAST_PORT` | `9910` | Porta pubblicata sull'host Docker |
-| `RENDER_WORKERS` | `2` | Numero di processi worker per il rendering |
-| `RENDER_MP_METHOD` | `fork` | Metodo multiprocessing |
-| `RENDER_CACHE_DISABLED` | `0` | Imposta `1` per disattivare la cache dei render |
-| `RENDER_RESULT_MAX` | `8` | Numero massimo di risultati nella cache |
-| `RENDER_RESULT_MAX_FRAMES` | `24000` | Limite complessivo dei frame in cache |
-| `PALETTE_CACHE_TTL` | `30` | Durata in secondi della cache delle palette |
-| `LOG_FILE` | `/data/pixelanim.log` | Percorso del file di log |
+| `PIXELANIM_URL` | Required | HTTP address of the PixelAnim backend, reachable from the Broadcast container |
+| `PIXELANIM_WS` | derived from `PIXELANIM_URL` + `/api/esp/stream` | Optional WebSocket address override |
+| `DEVICES_DB` | `/data/devices.db` | SQLite database path |
+| `TZ` | `Europe/Rome` | Time zone used by the clock |
+| `BROADCAST_PORT` | `9910` | Port published on the Docker host |
+| `RENDER_WORKERS` | `2` | Number of rendering worker processes |
+| `RENDER_MP_METHOD` | `fork` | Multiprocessing method |
+| `RENDER_CACHE_DISABLED` | `0` | Set to `1` to disable the render cache |
+| `RENDER_RESULT_MAX` | `8` | Maximum number of results in the cache |
+| `RENDER_RESULT_MAX_FRAMES` | `24000` | Total frame limit in the cache |
+| `PALETTE_CACHE_TTL` | `30` | Palette cache lifetime, in seconds |
+| `LOG_FILE` | `/data/pixelanim.log` | Log file path |
 
-Il database contiene board, palinsesti, grafi e impostazioni (palette). Montare `/data` come volume per non perderli.
+The database stores boards, playlists, graphs and settings (palette). Mount `/data` as a volume to preserve them.
 
-> **Sicurezza.** L'app **non ha autenticazione** e salva nel database le chiavi `noise_psk` delle board. Tienila su una rete fidata (LAN/VPN) o dietro un proxy con whitelist, e proteggi la cartella `/data`.
+> **Security.** The application **does not provide authentication** and stores the boards' `noise_psk` keys in the database. Keep it on a trusted network (LAN/VPN) or behind a proxy with an allowlist, and protect the `/data` directory.
 
 ---
 
-## Uso
+## Usage
 
-La pagina ha quattro sezioni, in alto:
+The page has four sections in the top navigation:
 
-| Sezione | A cosa serve |
+| Section | Purpose |
 |---|---|
-| **⚙ Impostazioni** | Definisci le board (nome, IP o nome host, porta, `noise_psk`, dimensioni, colore, rotazione 180°) e la palette a 16 colori |
-| **☰ Palinsesto** | Costruisci il loop di elementi per ogni board, con avvio/arresto e avvio automatico |
-| **◈ Nodi** | Editor dei grafi per le animazioni algoritmiche |
-| **📺 Monitor** | Anteprima di ciò che sta mostrando ogni board |
+| **⚙ Settings** | Configure boards (name, IP address or hostname, port, `noise_psk`, dimensions, colour, 180° rotation) and the 16-colour palette |
+| **☰ Playlist** | Build the item loop for each board, with start/stop and automatic start |
+| **◈ Nodes** | Graph editor for algorithmic animations |
+| **📺 Monitor** | Preview what each board is displaying |
 
-Dalla pagina principale puoi anche riprodurre direttamente un'animazione di PixelAnim su una board (colore, luminosità, FPS, loop, ripetizione orizzontale).
+From the main page you can also play a PixelAnim animation directly on a board (colour, brightness, FPS, loop and horizontal repeat).
 
-### Board
+### Boards
 
-- Indirizzo: IP **oppure** nome host (es. `blu.fritz.box`).
-- Colore: le board a colori usano la **palette a 16 colori** (modificabile in Impostazioni); quelle monocromatiche un solo colore + luminosità.
-- Rotazione 180°: per board montate al contrario.
+- Address: an IP address **or** hostname (e.g. `blu.fritz.box`).
+- Colour: colour boards use the **16-colour palette** (editable in Settings); monochrome boards use a single colour plus brightness.
+- 180° rotation: for boards mounted upside down.
 
-Palette predefinita: `#000000 #ff6b2b #ff2d2d #ffd21f #39ff14 #00e5c8 #2f8bff #3a3aff #a855f7 #ff3aa8 #ffffff #ff9d2e #9dff2e #8a5a2b #7a7a7a #1d4d2b`.
+Default palette: `#000000 #ff6b2b #ff2d2d #ffd21f #39ff14 #00e5c8 #2f8bff #3a3aff #a855f7 #ff3aa8 #ffffff #ff9d2e #9dff2e #8a5a2b #7a7a7a #1d4d2b`.
 
-### Palinsesto
+### Playlist
 
-Ogni board ha il suo palinsesto (fino a **100 elementi**), eseguito in loop. Tipi di elemento:
+Each board has its own playlist (up to **100 items**), played in a loop. Available item types:
 
-| Tipo | Contenuto |
+| Type | Content |
 |---|---|
-| **Animazione** | Un'animazione di PixelAnim (anche con ripetizione orizzontale) |
-| **Testo** | Testo fisso o scorrevole (max 120 caratteri) |
-| **Orologio** | Ora corrente |
-| **Pausa** | Ferma l'animazione per il tempo impostato (vedi sotto) |
-| **Grafo** | Un grafo a nodi salvato |
+| **Animation** | A PixelAnim animation (including horizontal repeat) |
+| **Text** | Static or scrolling text (max. 120 characters) |
+| **Clock** | Current time |
+| **Pause** | Stops the animation for the configured duration (see below) |
+| **Graph** | A saved node graph |
 
-Parametri comuni: durata (1 s – 24 h), FPS (1–30), colore, luminosità (1–100), rotazione, uso della palette, durata automatica in base al contenuto e il flag **Attivo** per saltare temporaneamente un elemento senza cancellarlo.
+Common parameters: duration (1 s – 24 h), FPS (1–30), colour, brightness (1–100), rotation, palette usage, automatic duration based on content, and the **Enabled** flag to temporarily skip an item without deleting it.
 
-**Modalità di pausa:**
+**Pause modes:**
 
-- `hold` – blocca l'ultimo frame
-- `blank` – schermo spento
-- `release` – rilascia la board (chiude il collegamento)
+- `hold` – hold the last frame
+- `blank` – turn the display off
+- `release` – release the board (close the connection)
 
-Altre funzioni:
+Other features:
 
-- **Avvio automatico**: per ogni board puoi far partire il palinsesto quando Broadcast si avvia.
-- **Importa da un'altra board**: copia il palinsesto di una board su un'altra (sostituendo o aggiungendo).
+- **Automatic start**: configure each board to start its playlist when Broadcast starts.
+- **Import from another board**: copy a board's playlist to another board (replace or append).
 
-### Messaggi urgenti (n8n, Home Assistant, script)
+### Urgent messages (n8n, Home Assistant, scripts)
 
-`POST /api/message` accoda un testo scorrevole su una board con **priorità sul palinsesto**: appena possibile il messaggio passa davanti, poi il palinsesto riprende. La coda tiene al massimo 20 messaggi per board (oltre: HTTP 429).
+`POST /api/message` queues scrolling text on a board with **priority over the playlist**: the message is played as soon as possible, then the playlist resumes. The queue holds up to 20 messages per board (otherwise HTTP 429 is returned).
 
 ```bash
 curl -X POST http://localhost:9910/api/message \
   -H 'Content-Type: application/json' \
-  -d '{"device": "Salotto", "text": "Citofono!", "repeat": 2, "color": "#ff2d2d"}'
+  -d '{"device": "Living room", "text": "Doorbell!", "repeat": 2, "color": "#ff2d2d"}'
 ```
 
-| Campo | Default | Note |
+| Field | Default | Notes |
 |---|---|---|
-| `device` | – | **id** oppure **nome** della board (senza distinzione di maiuscole) |
-| `text` | – | 1–200 caratteri |
-| `duration` | calcolata | secondi (1–3600); se omessa dipende da lunghezza del testo, `repeat` e `fps` |
-| `repeat` | `1` | quante volte scorre (1–20) |
+| `device` | – | Board **id** or **name** (case-insensitive) |
+| `text` | – | 1–200 characters |
+| `duration` | calculated | Seconds (1–3600); if omitted, depends on text length, `repeat` and `fps` |
+| `repeat` | `1` | Number of scroll repetitions (1–20) |
 | `fps` | `10` | 1–30 |
-| `color` | `#ffffff` | esadecimale `#rrggbb` |
+| `color` | `#ffffff` | Hexadecimal `#rrggbb` |
 | `brightness` | `100` | 1–100 |
-| `rotate` | impostazione della board | `true`/`false` |
+| `rotate` | board setting | `true`/`false` |
 
-In n8n basta un nodo **HTTP Request** (POST, body JSON) verso questo indirizzo.
+In n8n, use an **HTTP Request** node (POST, JSON body) targeting this endpoint.
 
 ---
 
-## Editor a nodi
+## Node editor
 
-Con **◈ Nodi** crei animazioni generate da un grafo. Ogni grafo si salva col suo nome e poi si usa come elemento di tipo **Grafo** nel palinsesto. A destra c'è l'anteprima fissa, con scelta di dimensione della board e FPS.
+With **◈ Nodes**, you can create animations generated by a graph. Each graph is saved under its own name and can then be used as a **Graph** item in a playlist. A fixed preview is shown on the right, with board size and FPS selection.
 
-### Muoversi e organizzare
+The **Viewport** node takes a saved Graph as its source and crops a window matching the current output size. Its **X** and **Y** coordinates can be bound to value nodes (Time, Random, Math or Algorithmic outputs), so a larger graph (for example 16×16 or 32×8) can scroll dynamically across a smaller board.
 
-- Trascina lo sfondo per spostarti, **rotella** per lo zoom (sfondo a punti per capire la scala). Canvas 6000×4000.
-- **⌖ Inquadra** mostra tutti i nodi.
-- Ogni nodo si può **comprimere** (▾/▸), **rinominare** (doppio clic sull'intestazione o ✎), **duplicare** (⧉) ed **eliminare** (✕). **Comprimi/Espandi** agisce su tutti i nodi.
+### Navigation and layout
 
-### Collegamenti
+- Drag the background to pan; use the **mouse wheel** to zoom (the dotted background helps indicate scale). Canvas size: 6000×4000.
+- **⌖ Frame all** displays all nodes.
+- Each node can be **collapsed** (▾/▸), **renamed** (double-click its header or use ✎), **duplicated** (⧉) and **deleted** (✕). **Collapse/Expand** applies to all nodes.
 
-| Porta | Colore | Cosa fa |
+### Connections
+
+| Port | Colour | What it does |
 |---|---|---|
-| Uscita del nodo → **Uscita** del grafo | verde | Il nodo viene disegnato. L'ordine degli strati (dal fondo alla cima) si cambia dalla lista nel nodo Uscita |
-| Uscita → ingresso di un modificatore | arancione | Il modificatore lavora su quel nodo |
-| Nodo valore → **porta blu** di un parametro | blu tratteggiato | Il parametro segue il valore (campo in sola lettura, mostra il valore live) |
+| Node output → graph **Output** | green | The node is drawn. Layer order (bottom to top) is changed in the list inside the Output node |
+| Output → modifier input | orange | The modifier operates on that node |
+| Value node → a parameter's **blue port** | dashed blue | The parameter follows the value (read-only field showing the live value) |
 
-Doppio clic su una porta per scollegarla. I collegamenti che creano **anelli** sono rifiutati.
+Double-click a port to disconnect it. Connections that create **loops** are rejected.
 
-### Nodi di disegno
+### Drawing nodes
 
-| Nodo | Parametri principali |
+| Node | Main parameters |
 |---|---|
-| **Pixel** | X, Y, ripetizioni (N.x/N.y, Δx/Δy), colore |
-| **Rettangolo** | X, Y, Largh., Alt., pieno, ripetizioni, colore |
-| **Gradiente** | X, Y, Largh., Alt., direzione, due colori, ripetizioni |
-| **Bitmap 8×8** | X, Y, scala (1–16), disegno 8×8, colore |
-| **Cerchio** | X, Y, raggio, pieno, colore |
-| **Testo** | testo, fisso/scorrevole, allineamento, X, Y, colore |
-| **Ora** | HH:MM, ore, minuti, secondi, HH:MM:SS o ore/minuti alternati; font 5×7 o 3×5; due punti lampeggianti; X, Y, colore |
-| **Grafo** | Incorpora un **altro grafo salvato** (vedi sotto): grafo, dimensione, X, Y, colori o monocromatico |
-| **Animazione** | Inserisce un'**animazione di PixelAnim** (vedi sotto): animazione, X, Y, colori o monocromatico, rallentamento |
+| **Pixel** | X, Y, repetitions (N.x/N.y, Δx/Δy), colour |
+| **Rectangle** | X, Y, width, height, filled, repetitions, colour |
+| **Gradient** | X, Y, width, height, direction, two colours, repetitions |
+| **8×8 Bitmap** | X, Y, scale (1–16), 8×8 drawing, colour |
+| **Circle** | X, Y, radius, filled, colour |
+| **Text** | text, static/scrolling, alignment, X, Y, colour |
+| **Time** | HH:MM, hours, minutes, seconds, HH:MM:SS or alternating hours/minutes; 5×7 or 3×5 font; blinking colon; X, Y, colour |
+| **Graph** | Embeds **another saved graph** (see below): graph, size, X, Y, colours or monochrome |
+| **Animation** | Inserts a **PixelAnim animation** (see below): animation, X, Y, colours or monochrome, slowdown |
 
-### Grafo dentro un grafo
+### Embedding a graph inside another graph
 
-Il nodo **Grafo** inserisce un grafo già salvato come se fosse un'immagine animata, e lo posiziona dove vuoi. Esempio: su una board 32×8 un grafo 8×8 a sinistra e, accanto, un testo scorrevole.
+The **Graph** node inserts an already-saved graph as if it were an animated image, which can be positioned wherever you like. For example, on a 32×8 board you can place an 8×8 graph on the left and scrolling text beside it.
 
-- **Grafo salvato**: sceglie il grafo da incorporare (il grafo che stai modificando non compare nell'elenco).
-- **Dimensione del grafo**: la grandezza con cui viene disegnato (8×8, 16×8, 32×8, 8×16, 16×16, 32×16). Scegli quella per cui l'avevi progettato.
-- **X / Y**: angolo in alto a sinistra; hanno le **porte blu**, quindi si possono muovere con Tempo, Casuale, Larghezza o Matematica. Ciò che esce dalla board viene tagliato.
-- **Colori**: *Colori del grafo* mantiene i colori della palette del grafo incorporato; *Monocromatico* colora ogni pixel acceso con il **colore scelto** nel nodo.
-- Gira agli stessi FPS del grafo che lo contiene e **in loop**: la durata del ciclo tiene conto di quella del grafo incorporato. Come gli altri nodi di disegno si può combinare con modificatori (Muovi, Ruota, Lampeggia…), rispetta l'intervallo DA/A e può essere misurato dal nodo **Larghezza** (*Pixel accesi* = pixel accesi nel frame, *Ingombro* = larghezza della dimensione scelta).
-- Usa la **versione salvata** del grafo incorporato: se lo modifichi, salvalo per vedere il cambiamento. Se un orologio è dentro il grafo incorporato, continua ad aggiornarsi nel palinsesto.
-- Si possono annidare fino a **3 livelli**. Un grafo non può incorporare se stesso (nemmeno tramite altri): il salvataggio viene rifiutato. Un grafo incorporato in altri non si può eliminare finché è in uso (l'errore elenca quali).
+- **Saved graph**: selects the graph to embed (the graph currently being edited is not listed).
+- **Graph size**: the size at which it is drawn (8×8, 16×8, 32×8, 8×16, 16×16, 32×16). Choose the size it was designed for.
+- **X / Y**: top-left corner; these have **blue ports**, so they can be controlled by Time, Random, Width or Math nodes. Anything outside the board is clipped.
+- **Colours**: *Graph colours* preserves the embedded graph's palette; *Monochrome* colours every lit pixel with the **colour selected** in the node.
+- Runs at the same FPS as the graph containing it and **loops**: the containing graph's cycle duration accounts for the embedded graph's duration. Like other drawing nodes, it can be combined with modifiers (Move, Rotate, Blink, etc.), respects the FROM/TO interval and can be measured by the **Width** node (*Lit pixels* = lit pixels in the frame, *Bounding box* = width of the selected size).
+- Uses the **saved version** of the embedded graph: save it after editing to see the changes. If the embedded graph contains a clock, it continues to update in the playlist.
+- Up to **3 nesting levels** are supported. A graph cannot embed itself, even indirectly through other graphs; saving is rejected. A graph embedded in other graphs cannot be deleted while in use (the error lists which graphs reference it).
 
-### Animazione di PixelAnim dentro un grafo
+### PixelAnim animation inside a graph
 
-Il nodo **Animazione** inserisce un'animazione di PixelAnim nel grafo, per esempio per metterla a sinistra su una 32×8 e far scorrere un testo a destra.
+The **Animation** node inserts a PixelAnim animation into the graph, for example to place it on the left of a 32×8 board and scroll text on the right.
 
-- **Animazione PixelAnim**: l'elenco viene da PixelAnim. Dimensioni e frame sono quelli dell'animazione.
-- **X / Y**: angolo in alto a sinistra, con le **porte blu** (bindabili). Ciò che esce dalla board viene tagliato.
-- **Colori**: *Colori della palette* mantiene gli indici di colore dell'animazione (le animazioni monocromatiche usano il colore 1 della palette); *Monocromatico* colora ogni pixel acceso con il **colore scelto** nel nodo.
-- **Rallenta ×**: ogni frame dell'animazione dura N frame del grafo (1–60). Di base si avanza di un frame dell'animazione per ogni frame del grafo, in loop; la durata del ciclo del grafo tiene conto di quella dell'animazione.
-- Come gli altri nodi di disegno si combina con i modificatori, rispetta l'intervallo DA/A e può essere misurato dal nodo **Larghezza**. Funziona anche dentro un grafo incorporato con il nodo **Grafo**.
-- I frame vengono scaricati da PixelAnim e tenuti in memoria per **60 secondi**: una modifica fatta in PixelAnim compare entro un minuto. Se PixelAnim non risponde si usa l'ultima copia; se non ce n'è, il nodo non disegna nulla e l'anteprima mostra un avviso (⚠), per esempio "Animazione #99 non trovata in PixelAnim".
-- Limiti: al massimo 1000 frame e 64×64 pixel per animazione.
-- Nei file di importazione/esportazione il nodo conserva l'id e il nome dell'animazione: i file vanno importati su un'installazione collegata alla **stessa istanza di PixelAnim**.
+- **PixelAnim animation**: the list comes from PixelAnim. The animation's dimensions and frames are used.
+- **X / Y**: top-left corner, with **blue ports** (can be bound). Anything outside the board is clipped.
+- **Colours**: *Palette colours* preserves the animation's colour indexes (monochrome animations use palette colour 1); *Monochrome* colours every lit pixel with the **colour selected** in the node.
+- **Slow down ×**: each animation frame lasts N graph frames (1–60). By default, one animation frame advances for every graph frame, in a loop; the graph's cycle duration accounts for the animation's duration.
+- Like other drawing nodes, it can be combined with modifiers, respects the FROM/TO interval and can be measured by the **Width** node. It also works inside a graph embedded through the **Graph** node.
+- Frames are downloaded from PixelAnim and kept in memory for **60 seconds**: a change made in PixelAnim appears within one minute. If PixelAnim does not respond, the last copy is used; if no copy is available, the node draws nothing and the preview shows a warning (⚠), for example "Animation #99 not found in PixelAnim".
+- Limits: at most 1000 frames and 64×64 pixels per animation.
+- In import/export files, the node stores the animation ID and name: files must be imported into an installation connected to the **same PixelAnim instance**.
 
-### Modificatori
+### Modifiers
 
-| Nodo | Effetto |
+| Node | Effect |
 |---|---|
-| **Ripetizioni** | Replica l'ingresso su una griglia, con colore iniziale e passo colore |
-| **Combina** | Unione, sottrazione, intersezione o XOR di due ingressi (A e B) |
-| **Colora** | Cambia colore |
-| **Muovi** | Scorrimento continuo o a rimbalzo, con velocità e periodo per asse |
-| **Ruota** | Rotazione continua o a pendolo attorno a un centro |
-| **Scala** | Ingrandisce/rimpicciolisce attorno a un centro |
-| **Specchia** | Orizzontale e/o verticale |
-| **Lampeggia** | Frame accesi/spenti e fase |
-| **Scia** | Echi dell'immagine nei frame precedenti |
+| **Repeats** | Replicates the input on a grid, with starting colour and colour step |
+| **Combine** | Union, subtraction, intersection or XOR of two inputs (A and B) |
+| **Colourize** | Changes colour |
+| **Move** | Continuous or bouncing movement, with speed and period per axis |
+| **Rotate** | Continuous or pendulum rotation around a centre |
+| **Scale** | Scales up/down around a centre |
+| **Mirror** | Horizontal and/or vertical mirroring |
+| **Blink** | On/off frames and phase |
+| **Trail** | Echoes the image in previous frames |
 
-### Nodi valore (porte blu)
+### Value nodes (blue ports)
 
-| Nodo | Colore | Cosa produce |
+| Node | Colour | Output |
 |---|---|---|
-| **Tempo** | viola | Valore che cambia nel tempo: cresce, avanti/indietro o sinusoide; periodo, min, max, passo |
-| **Casuale** | giallo | Valore casuale tra min e max, cambia ogni N frame; con seed e passo |
-| **Larghezza** | azzurro | Misura in pixel ciò che gli arriva (testo, bitmap o qualsiasi nodo) |
-| **Matematica** | verde | A + B, A − B, A × B, A ÷ B; A e B sono numeri o si legano ad altri nodi valore |
+| **Time** | purple | Value that changes over time: increasing, forward/backward or sine wave; period, min, max, step |
+| **Random** | yellow | Random value between min and max, changes every N frames; with seed and step |
+| **Width** | light blue | Measures the pixel width of its input (text, bitmap or any node) |
+| **Math** | green | A + B, A − B, A × B, A ÷ B; A and B can be numbers or connected to other value nodes |
 
-**Larghezza.** Testo, Ora e Bitmap sono misurati sul contenuto (anche se più larghi della board, anche in modalità scorrevole). *Colora* e *Lampeggia* sono trasparenti. Per gli altri nodi conta il riquadro dei pixel accesi sulla board. Con **Misura** scegli *Pixel accesi* (dal primo all'ultimo pixel) oppure *Ingombro* (colonne vuote comprese; bitmap = 8 × scala). L'**Offset** viene sommato al risultato. Fuori dall'intervallo DA/A del nodo misurato la larghezza è 0.
+**Width.** Text, Time and Bitmap are measured from their content (even when wider than the board, including scrolling mode). *Colourize* and *Blink* are transparent. For other nodes, the bounding box of lit pixels on the board is used. With **Measure**, choose *Lit pixels* (from the first to the last lit pixel) or *Bounding box* (including empty columns; bitmap = 8 × scale). The **Offset** is added to the result. Outside the measured node's FROM/TO interval, width is 0.
 
-**Matematica.** La divisione per zero dà 0. Il risultato può essere decimale; quando pilota un parametro in pixel viene arrotondato (.5 verso l'alto).
+**Math.** Division by zero returns 0. The result can be decimal; when driving a pixel parameter it is rounded (0.5 rounds up).
 
-Ogni nodo ha anche un intervallo **DA/A (secondi)** per limitarne l'attività nel tempo (fuori intervallo non disegna, o vale 0 se è un nodo valore). Un grafo ha al massimo **100 nodi**.
+Each node also has a **FROM/TO (seconds)** interval to limit its activity over time (outside the interval it does not draw, or returns 0 for a value node). A graph can contain up to **100 nodes**.
 
-### Esempi
+### Examples
 
-**Due testi in fila.** Testo A → **Larghezza** (Offset = 2) → porta blu **X** del testo B (entrambi allineati a sinistra): B parte sempre subito dopo A, qualunque sia la lunghezza di A.
+**Two text elements in sequence.** Text A → **Width** (Offset = 2) → text B's blue **X** port (both left-aligned): B always starts immediately after A, regardless of A's length.
 
-**Sottolineatura.** Testo → **Larghezza** → porta blu **Largh.** di un **Rettangolo** alto 1 pixel, posizionato sotto al testo.
+**Underline.** Text → **Width** → a **Rectangle** node's blue **Width** port, positioned one pixel below the text.
 
-**Movimento oscillante.** **Tempo** (avanti/indietro) → porta blu **X** di un nodo: si muove da un lato all'altro.
+**Oscillating movement.** **Time** (forward/backward) → a node's blue **X** port: it moves from one side to the other.
 
-**Metà della larghezza.** Larghezza → **Matematica** (A ÷ B, B = 2) → porta blu **X**: centra un elemento rispetto al testo misurato.
+**Half the width.** Width → **Math** (A ÷ B, B = 2) → blue **X** port: centres an element relative to the measured text.
 
-### Importare ed esportare grafi
+### Importing and exporting graphs
 
-Nella barra della vista Nodi:
+In the toolbar of the Nodes view:
 
-- **⬇ Esporta**: scarica il grafo aperto (anche non salvato) come `nome.pixelanim-graph.json`.
-- **⬇ Tutti**: scarica tutti i grafi salvati in un unico file di backup.
-- **⬆ Importa**: carica un file.
-  - *File singolo*: il grafo si apre nell'editor come nuovo e **non salvato**; controllalo e premi **Salva**. Accetta anche un JSON con solo `nodes` e `links`.
-  - *Backup*: chiede conferma e salva tutti i grafi; i nomi già esistenti diventano "Nome (2)", "Nome (3)"…; i grafi non validi vengono scartati e segnalati. I nodi **Grafo** vengono ricollegati ai grafi importati (per id del file, altrimenti per nome); se il grafo incorporato non esiste l'importazione lo segnala e il nodo resta senza grafo.
+- **⬇ Export**: downloads the open graph (even if unsaved) as `name.pixelanim-graph.json`.
+- **⬇ All**: downloads all saved graphs in a single backup file.
+- **⬆ Import**: uploads a file.
+  - *Single file*: the graph opens in the editor as new and **unsaved**; review it and click **Save**. Also accepts JSON containing only `nodes` and `links`.
+  - *Backup*: asks for confirmation and saves all graphs; existing names become "Name (2)", "Name (3)", etc. Invalid graphs are discarded and reported. **Graph** nodes are relinked to imported graphs (by file ID, otherwise by name); if an embedded graph is missing, the import reports it and the node remains without a graph.
 
-Formato dei file:
+File formats:
 
 ```jsonc
-// singolo grafo
-{ "format": "pixelanim-graph", "version": 1, "name": "Mio grafo",
+// single graph
+{ "format": "pixelanim-graph", "version": 1, "name": "My graph",
   "graph": { "nodes": [ … ], "links": [ … ], "out": { "x": 620, "y": 30 } } }
 
 // backup
@@ -342,63 +346,64 @@ Formato dei file:
   "graphs": [ { "id": 1, "name": "…", "graph": { … } } ] }
 ```
 
-Ogni nodo è `{ "id", "type", "x", "y", "params": { … } }` (più `name` e `collapsed` opzionali); ogni collegamento è `{ "from", "to", "to_port" }`, con `to: "out"` per l'uscita. I file vengono controllati dal server: tipi di nodo, id duplicati, anelli e posizioni non valide vengono respinti o corretti.
+Each node is `{ "id", "type", "x", "y", "params": { … } }` (with optional `name` and `collapsed`); each connection is `{ "from", "to", "to_port" }`, with `to: "out"` for the output. Files are validated by the server: node types, duplicate IDs, loops and invalid positions are rejected or corrected.
 
 ---
 
-## Lingue
+## Languages
 
-L'interfaccia supporta italiano e inglese. La lingua viene inizialmente rilevata dalle preferenze del browser; l'utente può cambiarla da **Impostazioni → Lingua**. La scelta viene memorizzata nel browser.
+The interface supports Italian and English. The language is initially detected from the browser preferences; users can change it under **Settings → Language**. The selection is stored in the browser.
 
-Le traduzioni si trovano in `static/i18n/it.json` e `static/i18n/en.json`. L'italiano è la lingua sorgente: quando si aggiunge un nuovo testo all'interfaccia, va aggiunta la relativa voce in entrambi i file. Le chiavi dei dizionari sono i testi sorgente italiani. Per i messaggi dinamici usa `t('Testo originale in italiano')`, così il testo viene tradotto anche quando è creato dal codice JavaScript.
+Translations are located in `static/i18n/it.json` and `static/i18n/en.json`. Italian is the source language: whenever new interface text is added, the corresponding entry must be added to both files. For dynamic messages, use `t('Original Italian text')` so that text generated by JavaScript is translated as well.
 
-## Sviluppo e configurazione locale
+## Development and local configuration
 
-Il codice applicativo deve rimanere uguale tra installazione pubblica e privata. Le differenze di ambiente vanno mantenute in `.env` e `compose.local.yml`, entrambi esclusi da Git. Per aggiornare l'installazione locale dopo aver pubblicato le modifiche: `git pull` e poi `docker compose -f compose.yml -f compose.local.yml up -d --build`. Prima dell'aggiornamento è consigliato fare un backup della cartella `data`.
+Application code must remain the same in public and private installations. Environment-specific differences belong in `.env` and `compose.local.yml`, both excluded from Git. To update the local installation after publishing changes: `git pull`, then `docker compose -f compose.yml -f compose.local.yml up -d --build`. Backing up the `data` directory before updating is recommended.
 
+---
 
-## API REST
+## REST API
 
-La documentazione interattiva generata da FastAPI è su `/docs`.
+FastAPI's interactive documentation is available at `/docs`.
 
-| Metodo | Percorso | Descrizione |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/animations` | Elenco animazioni (da PixelAnim) |
-| GET | `/api/animations/{id}/frames` | Frame di un'animazione |
-| GET / PUT | `/api/settings` | Palette a 16 colori |
-| GET / POST | `/api/devices` | Elenco / creazione board |
-| PUT / DELETE | `/api/devices/{id}` | Modifica / eliminazione board |
-| PUT | `/api/devices/{id}/autostart` | Avvio automatico del palinsesto |
-| GET / PUT | `/api/devices/{id}/playlist` | Lettura / salvataggio del palinsesto |
-| POST | `/api/devices/{id}/playlist/import` | Copia il palinsesto da un'altra board (`replace` o `append`) |
-| POST | `/api/devices/{id}/playlist/start` · `/stop` | Avvia / ferma il palinsesto |
-| GET | `/api/playlists/status` | Stato dei palinsesti in esecuzione |
-| GET | `/api/devices/{id}/monitor` | Ultimo frame mostrato dalla board |
-| POST | `/api/play` · `/api/stop` | Riproduce un'animazione / ferma una o tutte le board |
-| POST | `/api/message` | Messaggio urgente (vedi sopra) |
-| GET / POST | `/api/graphs` | Elenco / creazione grafi |
-| GET / PUT / DELETE | `/api/graphs/{id}` | Lettura / modifica / eliminazione di un grafo |
-| POST | `/api/graphs/render` | Anteprima: restituisce i frame di un grafo |
-| POST | `/api/graphs/validate` | Controlla e normalizza un grafo senza salvarlo |
-| GET | `/api/graphs/export` | Backup di tutti i grafi |
-| POST | `/api/graphs/import` | Importa più grafi (max 200 per richiesta) |
-| POST | `/api/graph/play` | Riproduce un grafo su una board |
+| GET | `/api/animations` | Animation list (from PixelAnim) |
+| GET | `/api/animations/{id}/frames` | Frames for an animation |
+| GET / PUT | `/api/settings` | 16-colour palette |
+| GET / POST | `/api/devices` | Board list / creation |
+| PUT / DELETE | `/api/devices/{id}` | Edit / delete a board |
+| PUT | `/api/devices/{id}/autostart` | Automatic playlist start |
+| GET / PUT | `/api/devices/{id}/playlist` | Read / save a playlist |
+| POST | `/api/devices/{id}/playlist/import` | Copy a playlist from another board (`replace` or `append`) |
+| POST | `/api/devices/{id}/playlist/start` · `/stop` | Start / stop a playlist |
+| GET | `/api/playlists/status` | Status of running playlists |
+| GET | `/api/devices/{id}/monitor` | Last frame displayed by a board |
+| POST | `/api/play` · `/api/stop` | Play an animation / stop one or all boards |
+| POST | `/api/message` | Urgent message (see above) |
+| GET / POST | `/api/graphs` | Graph list / creation |
+| GET / PUT / DELETE | `/api/graphs/{id}` | Read / edit / delete a graph |
+| POST | `/api/graphs/render` | Preview: returns a graph's frames |
+| POST | `/api/graphs/validate` | Validate and normalize a graph without saving it |
+| GET | `/api/graphs/export` | Backup of all graphs |
+| POST | `/api/graphs/import` | Import multiple graphs (max. 200 per request) |
+| POST | `/api/graph/play` | Play a graph on a board |
 
 ---
 
-## Limiti
+## Limits
 
-- Dimensioni board accettate nelle Impostazioni: larghezza 8/16/32, altezza 8/16. Il firmware disegna correttamente solo 8×8, 32×8 e 16×16.
-- Palinsesto: max 100 elementi. Grafo: max 100 nodi, 200 KB, al massimo 3 livelli di grafi incorporati. Coda messaggi: 20 per board.
-- L'anteprima dei grafi mostra al massimo i primi 400 frame; il ciclo di rendering è limitato a 4000 frame.
-- Animazioni PixelAnim nei grafi: max 1000 frame e 64×64 pixel ciascuna.
-- Un solo utente alla volta è il caso d'uso previsto: non ci sono account né permessi.
+- Board dimensions accepted in Settings: width 8/16/32, height 8/16. The firmware correctly draws only 8×8, 32×8 and 16×16.
+- Playlist: max. 100 items. Graph: max. 100 nodes, 200 KB and up to 3 levels of embedded graphs. Message queue: 20 per board.
+- Graph preview displays at most the first 400 frames; the rendering cycle is limited to 4000 frames.
+- PixelAnim animations inside graphs: max. 1000 frames and 64×64 pixels each.
+- The intended use case is one user at a time: there are no accounts or permissions.
 
 ---
 
-## Sviluppo
+## Development
 
-- Il backend è suddiviso in `main.py`, `api.py`, `core.py` e `database.py`; il frontend è una pagina senza build (`static/index.html`) con logica in `static/app.js`.
-- Per aggiungere una dimensione di board supportata dal firmware, aggiorna `FIRMWARE_DIMS` in `core.py`.
-- Per aggiungere un tipo di nodo servono due modifiche: la definizione lato server (`GRAPH_*_TYPES`, validazione in `check_graph` e rendering) e la voce in `NG_TYPES` del frontend, più il pulsante nel menu **Aggiungi**.
-- Il canvas dei nodi ha le stesse dimensioni nel frontend (`NG_CW`, `NG_CH`) e nel backend (`GRAPH_CANVAS_W`, `GRAPH_CANVAS_H`): se le cambi, cambiale in entrambi.
+- The backend is split into `main.py`, `api.py`, `core.py` and `database.py`; the frontend is a build-free page (`static/index.html`) with logic in `static/app.js`.
+- To add a board dimension supported by the firmware, update `FIRMWARE_DIMS` in `core.py`.
+- Adding a node type requires two changes: the server-side definition (`GRAPH_*_TYPES`, validation in `check_graph` and rendering) and the entry in the frontend's `NG_TYPES`, plus the button in the **Add** menu.
+- The node canvas has the same dimensions in the frontend (`NG_CW`, `NG_CH`) and backend (`GRAPH_CANVAS_W`, `GRAPH_CANVAS_H`): if you change them, update both.

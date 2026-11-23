@@ -316,5 +316,10 @@
   "🔄 Aggiorna": "🔄 Aggiorna",
   "🗑 Svuota": "🗑 Svuota",
   "✓ Chiudi": "✓ Chiudi",
-  ": zoom. Trascina in": ": zoom. Trascina in"
+  ": zoom. Trascina in": ": zoom. Trascina in",
+  "Mostra una porzione mobile di un grafo più grande": "Mostra una porzione mobile di un grafo più grande",
+  "Il nodo Viewport riceve in ingresso un nodo Grafo e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate X e Y sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.": "Il nodo Viewport riceve in ingresso un nodo Grafo e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate X e Y sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.",
+  "Il Viewport accetta come sorgente un nodo Grafo.": "Il Viewport accetta come sorgente un nodo Grafo.",
+  "Ingresso IN": "Ingresso IN",
+  "Viewport": "Viewport"
 }
