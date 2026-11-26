@@ -132,55 +132,67 @@
       </div>
     </div>
   </details>
-  <details class="ngadd-menu">
-    <summary>＋ Aggiungi nodo</summary>
-    <div class="ngadd-content">
-      <div class="ngadd-group">
-        <h4>Generatori</h4>
-        <button type="button" class="ngadd" data-type="pixel">Pixel</button>
-        <button type="button" class="ngadd" data-type="rect">Rettangolo</button>
-        <button type="button" class="ngadd" data-type="circle">Cerchio</button>
-        <button type="button" class="ngadd" data-type="gradient">Gradiente</button>
-        <button type="button" class="ngadd" data-type="bitmap">Bitmap</button>
-        <button type="button" class="ngadd" data-type="text">Testo</button>
-        <button type="button" class="ngadd" data-type="clock">Orologio</button>
-        <button type="button" class="ngadd" data-type="subgraph" title="Incorpora un altro grafo salvato">Grafo</button>
-        <button type="button" class="ngadd" data-type="animation" title="Inserisce un'animazione di PixelAnim">Animazione</button>
-        <button type="button" class="ngadd" data-type="algo" title="Script Python che calcola i pixel da accendere">Algoritmico</button>
-      </div>
-      <div class="ngadd-group">
-        <h4>Valori</h4>
-        <button type="button" class="ngadd" data-type="time">Tempo</button>
-        <button type="button" class="ngadd" data-type="random">Casuale</button>
-        <button type="button" class="ngadd" data-type="width">Larghezza</button>
-        <button type="button" class="ngadd" data-type="math">Matematica</button>
-      </div>
-      <div class="ngadd-group">
-        <h4>Elabora</h4>
-        <button type="button" class="ngadd" data-type="repeat">Ripetizioni</button>
-        <button type="button" class="ngadd" data-type="combine">Combina</button>
-        <button type="button" class="ngadd" data-type="color">Colora</button>
-      </div>
-      <div class="ngadd-group">
-        <h4>Trasforma</h4>
-        <button type="button" class="ngadd" data-type="move">Muovi</button>
-        <button type="button" class="ngadd" data-type="rotate">Ruota</button>
-        <button type="button" class="ngadd" data-type="scale">Scala</button>
-        <button type="button" class="ngadd" data-type="mirror">Specchia</button>
-        <button type="button" class="ngadd" data-type="blink">Lampeggia</button>
-        <button type="button" class="ngadd" data-type="trail">Scia</button>
-        <button type="button" class="ngadd" data-type="viewport" title="Mostra una porzione mobile di un grafo più grande">Viewport</button>
-      </div>
-    </div>
-  </details>
 </div>
 
-<div id="ngWrap"><div id="ngInner"><svg id="ngWires" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+<div class="ng-editor-layout">
+  <aside id="ngPalette" aria-label="Palette nodi">
+    <div class="ng-palette-search"><span aria-hidden="true">⌕</span><input id="ngPaletteFilter" type="search" placeholder="Filtra nodi" autocomplete="off" aria-label="Filtra nodi"></div>
+    <div class="ng-palette-groups">
+      <details class="ng-palette-group" open>
+        <summary>Generatori</summary>
+        <div class="ng-palette-items">
+          <button type="button" class="ngadd ng-node-pixel" data-type="pixel" data-icon="✣" draggable="true">Pixel</button>
+          <button type="button" class="ngadd ng-node-rect" data-type="rect" data-icon="▰" draggable="true">Rettangolo</button>
+          <button type="button" class="ngadd ng-node-circle" data-type="circle" data-icon="●" draggable="true">Cerchio</button>
+          <button type="button" class="ngadd ng-node-gradient" data-type="gradient" data-icon="◒" draggable="true">Gradiente</button>
+          <button type="button" class="ngadd ng-node-bitmap" data-type="bitmap" data-icon="▦" draggable="true">Bitmap</button>
+          <button type="button" class="ngadd ng-node-text" data-type="text" data-icon="T" draggable="true">Testo</button>
+          <button type="button" class="ngadd ng-node-clock" data-type="clock" data-icon="◷" draggable="true">Orologio</button>
+          <button type="button" class="ngadd ng-node-subgraph" data-type="subgraph" data-icon="▧" draggable="true">Grafo</button>
+          <button type="button" class="ngadd ng-node-animation" data-type="animation" data-icon="▶" draggable="true">Animazione</button>
+          <button type="button" class="ngadd ng-node-algo" data-type="algo" data-icon="ƒ" draggable="true">Algoritmico</button>
+        </div>
+      </details>
+      <details class="ng-palette-group" open>
+        <summary>Valori</summary>
+        <div class="ng-palette-items">
+          <button type="button" class="ngadd ng-node-time" data-type="time" data-icon="◴" draggable="true">Tempo</button>
+          <button type="button" class="ngadd ng-node-random" data-type="random" data-icon="⚄" draggable="true">Casuale</button>
+          <button type="button" class="ngadd ng-node-width" data-type="width" data-icon="↔" draggable="true">Larghezza</button>
+          <button type="button" class="ngadd ng-node-math" data-type="math" data-icon="±" draggable="true">Matematica</button>
+          <button type="button" class="ngadd ng-node-external" data-type="external" data-icon="⇥" draggable="true">Input esterno</button>
+        </div>
+      </details>
+      <details class="ng-palette-group" open>
+        <summary>Elabora</summary>
+        <div class="ng-palette-items">
+          <button type="button" class="ngadd ng-node-repeat" data-type="repeat" data-icon="⟳" draggable="true">Ripetizioni</button>
+          <button type="button" class="ngadd ng-node-combine" data-type="combine" data-icon="⊕" draggable="true">Combina</button>
+          <button type="button" class="ngadd ng-node-color" data-type="color" data-icon="◉" draggable="true">Colora</button>
+        </div>
+      </details>
+      <details class="ng-palette-group" open>
+        <summary>Trasforma</summary>
+        <div class="ng-palette-items">
+          <button type="button" class="ngadd ng-node-move" data-type="move" data-icon="✥" draggable="true">Muovi</button>
+          <button type="button" class="ngadd ng-node-rotate" data-type="rotate" data-icon="⤾" draggable="true">Ruota</button>
+          <button type="button" class="ngadd ng-node-scale" data-type="scale" data-icon="⤢" draggable="true">Scala</button>
+          <button type="button" class="ngadd ng-node-mirror" data-type="mirror" data-icon="⇋" draggable="true">Specchia</button>
+          <button type="button" class="ngadd ng-node-blink" data-type="blink" data-icon="ϟ" draggable="true">Lampeggia</button>
+          <button type="button" class="ngadd ng-node-trail" data-type="trail" data-icon="≋" draggable="true">Scia</button>
+          <button type="button" class="ngadd ng-node-viewport" data-type="viewport" data-icon="▣" draggable="true">Viewport</button>
+        </div>
+      </details>
+    </div>
+  </aside>
+  <div id="ngWrap"><div id="ngInner"><svg id="ngWires" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+</div>
 <p class="muted">
   Trascina l'<b>header</b> per muovere i nodi. <b>Rotella</b>: zoom. Trascina in <b>zona vuota</b>: pan.
-  <b>Pallina verde</b> → <b>Uscita</b>: disegno diretto. <b>Pallina viola/gialla/azzurra/verde</b> → <b>pallina blu</b>: binding parametro. Il nodo <b>Larghezza</b> misura in pixel ciò che gli arriva dall'ingresso (testo, bitmap o qualsiasi nodo di disegno) e può pilotare X, Y, Largh., Alt., ecc. di altri nodi. Il nodo <b>Matematica</b> calcola A + − × ÷ B: A e B sono numeri oppure si legano (porte blu) a Tempo, Casuale, Larghezza o a un altro nodo Matematica; i decimali vengono arrotondati quando il risultato pilota un parametro. Il nodo <b>Grafo</b> incorpora un altro grafo già salvato (nella sua dimensione, es. 8×8) e lo posiziona in X/Y sulla board; usa la versione salvata del grafo, quindi dopo averlo modificato salvalo. Il nodo <b>Animazione</b> inserisce un'animazione di PixelAnim (colori della palette o monocromatica), la posiziona in X/Y e la ripete in loop, un frame per ogni frame del grafo (<i>Rallenta ×</i> li rallenta).
+  <b>Pallina verde</b> → <b>Uscita</b>: disegno diretto. <b>Pallina viola/gialla/azzurra/verde</b> → <b>pallina blu</b>: binding parametro. Il nodo <b>Larghezza</b> misura in pixel ciò che gli arriva dall'ingresso (testo, bitmap o qualsiasi nodo di disegno) e può pilotare X, Y, Largh., Alt., ecc. di altri nodi. Il nodo <b>Matematica</b> calcola A + − × ÷ B: A e B sono numeri oppure si legano (porte blu) a Tempo, Casuale, Input esterno, Larghezza o a un altro nodo Matematica; i decimali vengono arrotondati quando il risultato pilota un parametro. Il nodo <b>Grafo</b> incorpora un altro grafo già salvato (nella sua dimensione, es. 8×8) e lo posiziona in X/Y sulla board; usa la versione salvata del grafo, quindi dopo averlo modificato salvalo. Il nodo <b>Animazione</b> inserisce un'animazione di PixelAnim (colori della palette o monocromatica), la posiziona in X/Y e la ripete in loop, un frame per ogni frame del grafo (<i>Rallenta ×</i> li rallenta).
   Il nodo <b>Algoritmico</b> espone ingressi numerici <code>in1</code>/<code>in2</code> e uscite <code>out1</code>/<code>out2</code> leggibili e scrivibili dallo script Python; le uscite viola 1 e 2 si collegano separatamente alle porte blu.
-  Il nodo <b>Viewport</b> riceve in ingresso un nodo <b>Grafo</b> e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate <b>X</b> e <b>Y</b> sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.
+  Il nodo <b>Input esterno</b> legge un valore numerico globale ricevuto tramite API. La chiave è salvata nel grafo, il valore resta soltanto in memoria e aggiorna sia l'anteprima sia le board in riproduzione.
+  Il nodo <b>Viewport</b> riceve in ingresso un nodo <b>Grafo</b> o <b>Animazione</b> e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate <b>X</b> e <b>Y</b> sono collegabili a Tempo, Casuale, Input esterno, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.
   Ogni nodo ha un range <b>DA</b>/<b>A</b> in secondi per attivarsi solo in una finestra del ciclo.
 </p>
 </section>

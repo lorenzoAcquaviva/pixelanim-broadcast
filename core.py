@@ -46,6 +46,32 @@ RENDER_RESULT_MAX_FRAMES  = max(1, int(os.getenv("RENDER_RESULT_MAX_FRAMES", "24
 _rev_counter = itertools.count(1)
 active_frames: dict = {}
 
+# Input esterni: registro globale volatile, mai persistito nel database.
+_EXTERNAL_INPUTS: dict[str, dict] = {}
+_EXTERNAL_INPUT_LOCK = threading.RLock()
+_EXTERNAL_INPUT_REVISION = 0
+MAX_EXTERNAL_INPUTS = 256
+
+def set_external_inputs(values: dict) -> int:
+    """Aggiorna in modo atomico il registro globale degli input numerici."""
+    global _EXTERNAL_INPUT_REVISION
+    now = time.time()
+    with _EXTERNAL_INPUT_LOCK:
+        if len(_EXTERNAL_INPUTS) + sum(1 for k in values if k not in _EXTERNAL_INPUTS) > MAX_EXTERNAL_INPUTS:
+            raise ValueError(f"Massimo {MAX_EXTERNAL_INPUTS} chiavi esterne")
+        for key, value in values.items():
+            _EXTERNAL_INPUTS[key] = {"value": float(value), "updated_at": now}
+        _EXTERNAL_INPUT_REVISION += 1
+        return _EXTERNAL_INPUT_REVISION
+
+def get_external_inputs() -> tuple[dict, int]:
+    with _EXTERNAL_INPUT_LOCK:
+        return ({k: dict(v) for k, v in _EXTERNAL_INPUTS.items()}, _EXTERNAL_INPUT_REVISION)
+
+def external_input_revision() -> int:
+    with _EXTERNAL_INPUT_LOCK:
+        return _EXTERNAL_INPUT_REVISION
+
 
 def _set_active_frame(device_id, frames, fps, width, height, color, palette, rgb, running=True):
     active_frames[device_id] = {
@@ -590,10 +616,11 @@ def clock_key_seconds():
 # ─── Grafi a nodi ────────────────────────────────────────────────────────────
 
 GRAPH_SOURCE_TYPES = {"time", "random"}
+GRAPH_EXTERNAL_TYPES = {"external"}
 GRAPH_MEASURE_TYPES = {"width"}
 GRAPH_DERIVED_TYPES = {"math"}
 # "algo" è insieme un nodo di disegno e una sorgente di valori (uscite 1 e 2: link con from_port "1"/"2")
-GRAPH_VALUE_TYPES = GRAPH_SOURCE_TYPES | GRAPH_MEASURE_TYPES | GRAPH_DERIVED_TYPES | {"algo"}
+GRAPH_VALUE_TYPES = GRAPH_SOURCE_TYPES | GRAPH_EXTERNAL_TYPES | GRAPH_MEASURE_TYPES | GRAPH_DERIVED_TYPES | {"algo"}
 GRAPH_CALC_TYPES = GRAPH_MEASURE_TYPES | GRAPH_DERIVED_TYPES | {"algo"}
 GRAPH_ALGO_BIND_PORTS = {"in1", "in2"}
 GRAPH_MATH_OPS = {"add", "sub", "mul", "div"}
@@ -605,6 +632,7 @@ GRAPH_TIME_MODES = {"linear", "pingpong", "sine"}
 GRAPH_BIND_PORTS = {"x", "y", "w", "h", "scale", "r"}
 GRAPH_REPEAT_BIND_PORTS = {"x", "y", "dx", "dy", "nx", "ny"}
 GRAPH_MATH_BIND_PORTS = {"va", "vb"}
+GRAPH_TEXT_BIND_PORTS = {"text"}
 MAX_GRAPH_NODES = 100
 GRAPH_CANVAS_W, GRAPH_CANVAS_H = 6000, 4000
 GRAPH_FILE_FORMAT, GRAPH_BUNDLE_FORMAT, GRAPH_FILE_VERSION = "pixelanim-graph", "pixelanim-graphs", 1
@@ -722,7 +750,8 @@ def graph_time_binds(graph):
             continue
         port = link.get("to_port", "x")
         ok = (port in GRAPH_BIND_PORTS or port in GRAPH_REPEAT_BIND_PORTS or port in GRAPH_MATH_BIND_PORTS
-              or (port in GRAPH_ALGO_BIND_PORTS and types.get(to) == "algo"))
+              or (port in GRAPH_ALGO_BIND_PORTS and types.get(to) == "algo")
+              or (port in GRAPH_TEXT_BIND_PORTS and types.get(to) == "text"))
         if not ok:
             continue
         if types[frm] == "algo":            # sorgente a due uscite: la chiave è "<id>.<1|2>"
@@ -921,6 +950,45 @@ def check_graph(graph):
                 gp["script"] = ""
             if len(gp.get("script", "")) > ALGO_MAX_SCRIPT:
                 raise HTTPException(400, f"Script del nodo troppo lungo (max {ALGO_MAX_SCRIPT} caratteri)")
+        if n["type"] == "bitmap":
+            bp = n.setdefault("params", {})
+            bw = _pi(bp, "w", 1, 128, 8)
+            bh = _pi(bp, "h", 1, 128, 8)
+            raw_frames = bp.get("frames")
+            if not isinstance(raw_frames, list) or not raw_frames:
+                # Migrazione delle vecchie bitmap 8x8 (un bit per pixel).
+                old = str(bp.get("bits", ""))
+                if len(old) >= 16:
+                    old = (old + "0" * 16)[:16]
+                    f = []
+                    for yy in range(8):
+                        try:
+                            byte = int(old[yy * 2:yy * 2 + 2], 16)
+                        except ValueError:
+                            byte = 0
+                        f.extend(format(_pi(bp, "color", 0, 15, 1), "X") if byte & (1 << (7 - xx)) else "0" for xx in range(8))
+                    raw_frames = ["".join(f)]
+                    bw, bh = 8, 8
+                else:
+                    raw_frames = ["0" * (bw * bh)]
+            clean = []
+            for frame in raw_frames[:1000]:
+                src = str(frame or "").upper()
+                src = "".join(ch for ch in src if ch in "0123456789ABCDEF")
+                clean.append((src + "0" * (bw * bh))[:bw * bh])
+            bp["w"], bp["h"], bp["frames"] = bw, bh, clean or ["0" * (bw * bh)]
+            raw_durations = bp.get("frame_durations") if isinstance(bp.get("frame_durations"), list) else []
+            bp["frame_durations"] = [max(20, min(10000, _pi({"v": raw_durations[i] if i < len(raw_durations) else 100}, "v", 20, 10000, 100))) for i in range(len(bp["frames"]))]
+            bp.pop("bits", None)
+            bp["color"] = _pi(bp, "color", 0, 15, 1)
+        if n["type"] == "external":
+            ep = n.setdefault("params", {})
+            key = str(ep.get("key") or "").strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", key):
+                raise HTTPException(400, "Chiave Input esterno non valida (usa lettere, numeri, _, ., : o -)")
+            ep["key"] = key
+            ep["default"] = _algo_num(_pf(ep, "default", 0.0))
+            ep["timeout"] = _pi(ep, "timeout", 0, 86400, 30)
         if n["type"] == "math":
             n.setdefault("params", {})["op"] = n["params"].get("op") if n["params"].get("op") in GRAPH_MATH_OPS else "add"
     for l in links:
@@ -944,20 +1012,20 @@ def check_graph(graph):
                 raise HTTPException(400, "L'ingresso accetta solo nodi di disegno o modificatori")
             if to_node["type"] == "combine" and port not in ("a", "b"):
                 raise HTTPException(400, "Il nodo Combina accetta solo le porte 'a' e 'b'")
-            if to_node["type"] == "viewport" and frm_node["type"] != "subgraph":
-                raise HTTPException(400, "Il Viewport accetta come sorgente un nodo Grafo")
+            if to_node["type"] == "viewport" and frm_node["type"] not in ("subgraph", "animation", "bitmap"):
+                raise HTTPException(400, "Il Viewport accetta come sorgente un nodo Grafo o Animazione")
             if to_node["type"] != "combine" and port != "in":
                 raise HTTPException(400, f"Il nodo {to_node['type']} accetta solo la porta 'in'")
             continue
         if frm_node["type"] not in GRAPH_VALUE_TYPES:
-            raise HTTPException(400, "Solo un nodo Tempo, Casuale, Larghezza, Matematica o Algoritmico può essere sorgente di un binding")
+            raise HTTPException(400, "Solo un nodo Tempo, Casuale, Input esterno, Larghezza, Matematica o Algoritmico può essere sorgente di un binding")
         if frm_node["type"] == "algo" and str(l.get("from_port")) not in ("1", "2"):
             raise HTTPException(400, "Un nodo Algoritmico si collega a una porta blu solo tramite le sue uscite 1 e 2")
         if to_node["type"] == "repeat":
             if port not in GRAPH_REPEAT_BIND_PORTS:
                 raise HTTPException(400, f"Porta '{port}' non valida per Ripetizioni")
         elif to_node["type"] in GRAPH_DRAW_TYPES:
-            if port not in GRAPH_BIND_PORTS and not (to_node["type"] == "algo" and port in GRAPH_ALGO_BIND_PORTS):
+            if port not in GRAPH_BIND_PORTS and not (to_node["type"] == "algo" and port in GRAPH_ALGO_BIND_PORTS) and not (to_node["type"] == "text" and port in GRAPH_TEXT_BIND_PORTS):
                 raise HTTPException(400, f"Porta '{port}' non valida")
         elif to_node["type"] in GRAPH_DERIVED_TYPES:
             if port not in GRAPH_MATH_BIND_PORTS:
@@ -1057,7 +1125,8 @@ def node_period(node, width, fps, time_nodes, binds_for_node, loops=None):
     if loops and node.get("id") in loops:
         periods.append(max(1, loops[node["id"]]))
     if t == "text" and p.get("mode") == "scroll":
-        periods.append(len(text_columns(str(p.get("text", "")))) + width)
+        text_len = 120 if binds_for_node.get("text") else len(text_columns(str(p.get("text", ""))))
+        periods.append(text_len + width)
     elif t == "clock":
         part, blink = p.get("part", "HH:MM"), p.get("blink", True)
         if part == "alterna":
@@ -1147,20 +1216,33 @@ def _draw_node(canvas, node, k, width, height, fps, now, time_values, binds_for_
             for i in range(nx):
                 _draw_gradient(canvas, x + i * ddx, y + j * ddy, w, h, direction, ca, cb, width, height)
     elif t == "bitmap":
-        bits = (str(p.get("bits", "FF8181FF818181FF")) + "0" * 16)[:16]
+        bw = _pi(p, "w", 1, 128, 8)
+        bh = _pi(p, "h", 1, 128, 8)
+        frames = p.get("frames") if isinstance(p.get("frames"), list) else []
+        if not frames:
+            # Compatibilità in lettura con grafi non ancora normalizzati.
+            old = (str(p.get("bits", "")) + "0" * 16)[:16]
+            frame = []
+            for yy in range(8):
+                try: byte = int(old[yy * 2:yy * 2 + 2], 16)
+                except ValueError: byte = 0
+                frame.extend(format(color, "X") if byte & (1 << (7 - xx)) else "0" for xx in range(8))
+            frames = ["".join(frame)]
+            bw = bh = 8
+        frame = str(frames[_bitmap_frame_index(p, k, fps)] or "")
         sc = _resolve(p, "scale", time_values, binds_for_node, 1, 16, 1)
-        for r in range(8):
-            try:
-                byte_val = int(bits[r * 2:r * 2 + 2], 16)
-            except ValueError:
-                byte_val = 0
-            for c in range(8):
-                if (byte_val >> (7 - c)) & 1:
-                    for dy in range(sc):
-                        for dx in range(sc):
-                            px, py = x + c * sc + dx, y + r * sc + dy
-                            if 0 <= px < width and 0 <= py < height:
-                                canvas[py][px] = color
+        for yy in range(bh):
+            for xx in range(bw):
+                pos = yy * bw + xx
+                try: pixel_color = int(frame[pos], 16)
+                except (ValueError, IndexError): pixel_color = 0
+                if not pixel_color:
+                    continue
+                for dy in range(sc):
+                    for dx in range(sc):
+                        px, py = x + xx * sc + dx, y + yy * sc + dy
+                        if 0 <= px < width and 0 <= py < height:
+                            canvas[py][px] = pixel_color
     elif t == "circle":
         r = _resolve(p, "r", time_values, binds_for_node, 0, 256, 4)
         fill = p.get("fill", True)
@@ -1182,7 +1264,11 @@ def _draw_node(canvas, node, k, width, height, fps, now, time_values, binds_for_
                         if inner2 <= d2 <= outer2:
                             canvas[yy][xx] = color
     elif t == "text":
-        cols = text_columns(str(p.get("text", ""))[:120])
+        text_src = binds_for_node.get("text")
+        text_value = time_values.get(text_src, p.get("text", "")) if text_src else p.get("text", "")
+        if isinstance(text_value, float):
+            text_value = str(int(text_value)) if text_value.is_integer() else str(round(text_value, 2))
+        cols = text_columns(str(text_value)[:120])
         if p.get("mode") == "scroll":
             x0 = width - (k % (len(cols) + width))
         else:
@@ -1253,17 +1339,15 @@ def measure_width(node_id, k, ctx, mode="ink"):
             return 0
         return _sub_size(p)[0] if mode == "box" else _ink_width(frames[k % len(frames)])
     if t == "bitmap":
-        bits = (str(p.get("bits", "FF8181FF818181FF")) + "0" * 16)[:16]
+        bw = _pi(p, "w", 1, 128, 8)
+        bh = _pi(p, "h", 1, 128, 8)
+        frames = p.get("frames") if isinstance(p.get("frames"), list) else []
+        frame = str(frames[_bitmap_frame_index(p, k, ctx["fps"])] ) if frames else ""
         sc = _resolve(p, "scale", ctx["time_values"], ctx["binds"].get(node_id, {}), 1, 16, 1)
         if mode == "box":
-            return 8 * sc
-        lit = set()
-        for r in range(8):
-            try:
-                byte_val = int(bits[r * 2:r * 2 + 2], 16)
-            except ValueError:
-                byte_val = 0
-            lit.update(c for c in range(8) if (byte_val >> (7 - c)) & 1)
+            return bw * sc
+        lit = [x for y in range(bh) for x in range(bw)
+               if y * bw + x < len(frame) and frame[y * bw + x] != "0"]
         return (max(lit) - min(lit) + 1) * sc if lit else 0
     return _ink_width(eval_node_matrix(node_id, k, ctx))
 
@@ -1297,6 +1381,20 @@ def _eval_math(node, ctx):
         r = a + b
     r = round(max(-1e6, min(1e6, r)), 4)
     return int(r) if r == int(r) else r
+
+
+def _bitmap_frame_index(params, k, fps):
+    frames = params.get("frames") if isinstance(params.get("frames"), list) else []
+    if not frames: return 0
+    durations = params.get("frame_durations") if isinstance(params.get("frame_durations"), list) else []
+    ds = [max(20, min(10000, int(durations[i]))) if i < len(durations) else 100 for i in range(len(frames))]
+    total = sum(ds)
+    elapsed = (max(0, int(k)) * 1000 / max(1, int(fps))) % total
+    acc = 0
+    for i, duration in enumerate(ds):
+        acc += duration
+        if elapsed < acc: return i
+    return len(frames) - 1
 
 
 def eval_node_matrix(node_id, k, ctx):
@@ -1696,9 +1794,28 @@ def _eval_node_matrix(node_id, k, ctx):
     if t == "viewport":
         source_id = ctx["inputs"].get("viewport", {}).get(node_id)
         source_node = ctx["nodes"].get(source_id) if source_id else None
-        source_frames = ctx["sub_frames"].get(source_id) if source_id else None
-        if source_node and source_frames and _node_active_at(source_node, k / max(1, ctx["fps"])):
-            source_frame = source_frames[k % len(source_frames)]
+        source_frame = None
+        if source_node and _node_active_at(source_node, k / max(1, ctx["fps"])):
+            if source_node.get("type") == "subgraph":
+                source_frames = ctx["sub_frames"].get(source_id)
+                if source_frames:
+                    source_frame = source_frames[k % len(source_frames)]
+            elif source_node.get("type") == "animation":
+                source_frame = _anim_frame(source_node, k, ctx)
+            elif source_node.get("type") == "bitmap":
+                bp = source_node.get("params") or {}
+                bw, bh = _pi(bp, "w", 1, 128, 8), _pi(bp, "h", 1, 128, 8)
+                bframes = bp.get("frames") if isinstance(bp.get("frames"), list) else []
+                if bframes:
+                    raw = str(bframes[_bitmap_frame_index(bp, k, ctx["fps"])] or "")
+                    source_frame = []
+                    for by in range(bh):
+                        row = []
+                        for bx in range(bw):
+                            try: row.append(int(raw[by * bw + bx], 16))
+                            except (ValueError, IndexError): row.append(0)
+                        source_frame.append(row)
+        if source_frame:
             source_h = len(source_frame)
             source_w = len(source_frame[0]) if source_h else 0
             rb = ctx["binds"].get(node_id, {})
@@ -1867,7 +1984,7 @@ def _eval_node_matrix(node_id, k, ctx):
 
 
 def render_graph(graph, width, height, fps, now, max_frames=4000, values_out=None, _depth=0, _stack=(),
-                 warnings_out=None):
+                 warnings_out=None, external_values=None):
     layers = graph_layers(graph)
     time_nodes = graph_time_nodes(graph)
     calc_nodes = graph_calc_nodes(graph)
@@ -1889,7 +2006,8 @@ def render_graph(graph, width, height, fps, now, max_frames=4000, values_out=Non
             nn = nodes[nid]
             stack.extend(_children(nn, inputs))
             stack.extend(_src_node(src_id) for src_id in binds.get(nid, {}).values()
-                         if _src_node(src_id) in calc_nodes)
+                         if (_src_node(src_id) in calc_nodes
+                             or nodes.get(_src_node(src_id), {}).get("type") in GRAPH_EXTERNAL_TYPES))
         return out
 
     reached = reach(item["node"]["id"] for item in layers)
@@ -1910,7 +2028,7 @@ def render_graph(graph, width, height, fps, now, max_frames=4000, values_out=Non
                 sub_w = []
                 done[(gid, sw, sh)] = render_graph(sg, sw, sh, fps, now, max_frames,
                                                    _depth=_depth + 1, _stack=_stack + (gid,),
-                                                   warnings_out=sub_w)
+                                                   warnings_out=sub_w, external_values=external_values)
                 if warnings_out is not None:
                     warnings_out.extend(
                         {"node": None, "msg": f"Grafo incorporato «{sp.get('graph_name') or gid}»: {w['msg']}"}
@@ -1924,6 +2042,14 @@ def render_graph(graph, width, height, fps, now, max_frames=4000, values_out=Non
             if entry:
                 anims[nid] = entry
     loops = {nid: len(fr) for nid, fr in sub_frames.items()}
+    for nid in used:
+        if nodes[nid].get("type") == "bitmap":
+            bp = nodes[nid].get("params") or {}
+            frames = bp.get("frames")
+            if isinstance(frames, list) and frames:
+                durations = bp.get("frame_durations") if isinstance(bp.get("frame_durations"), list) else []
+                total_ms = sum(max(20, min(10000, int(durations[i]))) if i < len(durations) else 100 for i in range(len(frames)))
+                loops[nid] = max(1, math.ceil(total_ms * fps / 1000))
     for nid, entry in anims.items():
         loops[nid] = len(entry["frames"]) * _pi(nodes[nid].get("params") or {}, "hold", 1, 60, 1)
 
@@ -1981,12 +2107,29 @@ def render_graph(graph, width, height, fps, now, max_frames=4000, values_out=Non
             else:
                 values_out[cid] = []
 
+    external_values = external_values or {}
+    external_nodes = {nid: nodes[nid] for nid in used if nodes[nid].get("type") == "external"}
+    if values_out is not None:
+        for nid in external_nodes:
+            values_out[nid] = []
+
     frames = []
+    external_now_ts = time.time()
     for k in range(cycle):
         t_sec = k / max(1, fps)
         time_values = {}
         for tid, tn in time_nodes.items():
             time_values[tid] = _eval_value(tn, k, fps) if _node_active_at(tn, t_sec) else 0
+        for eid, en in external_nodes.items():
+            ep = en.get("params") or {}
+            key = ep.get("key", "")
+            record = external_values.get(key) or {}
+            timeout = _pi(ep, "timeout", 0, 86400, 30)
+            fresh = bool(record) and (timeout == 0 or external_now_ts - float(record.get("updated_at", 0)) <= timeout)
+            value = record.get("value", ep.get("default", 0)) if fresh else ep.get("default", 0)
+            time_values[eid] = _algo_num(value) if _node_active_at(en, t_sec) else 0
+            if values_out is not None:
+                values_out[eid].append(time_values[eid])
         ctx = {"nodes": nodes, "inputs": inputs, "binds": binds, "time_values": time_values,
                "width": width, "height": height, "fps": fps, "now": now, "cycle": cycle,
                "cache": {}, "busy": set(), "mbusy": set(), "sub_frames": sub_frames, "anims": anims,
@@ -2058,6 +2201,47 @@ def _graph_tree_nodes(g, stack=(), depth=0):
             if loaded:
                 res += _graph_tree_nodes(loaded[1], stack + (loaded[0],), depth + 1)
     return res
+
+
+def _external_nodes_in_graph(graph, _stack=(), _depth=0):
+    if not isinstance(graph, dict) or _depth > MAX_SUBGRAPH_DEPTH:
+        return []
+    found = [n for n in graph.get("nodes", [])
+             if isinstance(n, dict) and n.get("type") == "external"]
+    if _depth < MAX_SUBGRAPH_DEPTH:
+        for n in _subgraph_nodes(graph):
+            loaded = _load_subgraph(n.get("params") or {}, _stack)
+            if loaded:
+                gid, sub = loaded
+                if gid not in _stack:
+                    found.extend(_external_nodes_in_graph(sub, _stack + (gid,), _depth + 1))
+    return found
+
+
+def item_has_external_input(item):
+    if item.get("type") != "graph":
+        return False
+    graph = item.get("graph") or graph_data(item.get("graph_id", 0))
+    return graph_has_external_inputs(graph or {})
+
+
+def item_external_next_expiry(item):
+    if item.get("type") != "graph":
+        return None
+    graph = item.get("graph") or graph_data(item.get("graph_id", 0))
+    nodes = _external_nodes_in_graph(graph or {})
+    values, _ = get_external_inputs()
+    now = time.time()
+    expiries = []
+    for node in nodes:
+        params = node.get("params") or {}
+        timeout = _pi(params, "timeout", 0, 86400, 30)
+        record = values.get(params.get("key", "")) or {}
+        if timeout > 0 and record:
+            expiry = float(record.get("updated_at", 0)) + timeout
+            if expiry > now:
+                expiries.append(expiry)
+    return min(expiries) if expiries else None
 
 
 def item_has_clock(item):
@@ -2226,6 +2410,7 @@ def _render_worker(payload: dict) -> dict:
         max_frames=payload.get("max_frames", 4000),
         values_out=values,
         warnings_out=warnings,
+        external_values=payload.get("external_values") or {},
     )
     total = len(frames)
     max_out = payload.get("max_out")
@@ -2330,16 +2515,37 @@ def _invalidate_render_cache():
     _render_result_order.clear()
 
 
+def graph_has_external_inputs(graph, _stack=(), _depth=0):
+    if not isinstance(graph, dict) or _depth > MAX_SUBGRAPH_DEPTH:
+        return False
+    nodes = graph.get("nodes", [])
+    if any(isinstance(n, dict) and n.get("type") == "external" for n in nodes):
+        return True
+    if _depth >= MAX_SUBGRAPH_DEPTH:
+        return False
+    for n in nodes:
+        if not isinstance(n, dict) or n.get("type") != "subgraph":
+            continue
+        loaded = _load_subgraph(n.get("params") or {}, _stack)
+        if loaded:
+            gid, sub = loaded
+            if gid not in _stack and graph_has_external_inputs(sub, _stack + (gid,), _depth + 1):
+                return True
+    return False
+
+
 async def _render_in_pool(graph, width, height, fps, *, max_frames, max_out, timeout):
     if _render_pool is None:
         raise PlayError("Render pool non disponibile", 503)
 
     now = local_now()
+    dynamic_inputs = graph_has_external_inputs(graph)
+    external_values, external_revision = get_external_inputs()
     scope, ttl = _cache_scope(graph, now)
     cache_key = _render_cache_key(graph, width, height, fps, max_frames, max_out, scope)
     t_start = time.monotonic()
 
-    if not RENDER_CACHE_DISABLED:
+    if not RENDER_CACHE_DISABLED and not dynamic_inputs:
         cached = _render_cache_get(cache_key)
         if cached is not None:
             dt = time.monotonic() - t_start
@@ -2359,6 +2565,7 @@ async def _render_in_pool(graph, width, height, fps, *, max_frames, max_out, tim
                 "width": width, "height": height, "fps": fps,
                 "now": now.isoformat(),
                 "anims": anims_snapshot,
+                "external_values": external_values,
                 "max_frames": max_frames,
                 "max_out": max_out,
             }),
@@ -2369,10 +2576,15 @@ async def _render_in_pool(graph, width, height, fps, *, max_frames, max_out, tim
             f"render timeout {width}x{height}@{fps}fps scope={scope}")
         raise PlayError("Render troppo lento: riduci la complessità del grafo o gli FPS", 504)
 
+    if dynamic_inputs:
+        result["_external_revision"] = external_revision
+        result["_external_state"] = {key: {"updated_at": rec.get("updated_at", 0)}
+                                     for key, rec in external_values.items()}
     dt = time.monotonic() - t_start
-    if RENDER_CACHE_DISABLED:
+    if RENDER_CACHE_DISABLED or dynamic_inputs:
         _render_cache_stats["bypass"] += 1
-        log.info(f"[render] BYPASS    ({dt:.2f}s) scope={scope} "
+        reason = "external-input" if dynamic_inputs else "disabled"
+        log.info(f"[render] BYPASS    ({dt:.2f}s) reason={reason} scope={scope} "
                  f"{width}x{height}@{fps}fps frames={len(result['frames'])}")
         _stats_record_render("bypass", scope, width, height, fps, dt)
     else:
@@ -2505,7 +2717,10 @@ async def load_content(device, item):
         frames = render_text(item["text"], width, height)
     else:
         frames = render_clock(width, height, local_now())
-    return {"width": width, "height": height}, [{"pixels": f} for f in frames]
+    return {"width": width, "height": height,
+            "_external_revision": result.get("_external_revision") if kind == "graph" else None,
+            "_external_state": result.get("_external_state", {}) if kind == "graph" else {}}, \
+           [{"pixels": f} for f in frames]
 
 
 async def play_pause(device, item, link):
@@ -2535,7 +2750,7 @@ async def play_pause(device, item, link):
     return link, info
 
 
-async def play_item(device, item, link, loop=True):
+async def play_item(device, item, link, loop=True, frame_offset=0, phase_started=None):
     kind = item.get("type", "animation")
     if kind == "pause":
         return await play_pause(device, item, link)
@@ -2544,6 +2759,8 @@ async def play_item(device, item, link, loop=True):
     rgb = rgb_from(item["color"], item["brightness"])
     animation, frames = await load_content(device, item)
     fps = 1 if kind == "clock" else item["fps"]
+    if phase_started is not None:
+        frame_offset = int((time.monotonic() - phase_started) * max(1, fps))
     use_pal = item["use_palette"] and kind in ("animation", "graph")
     did = device["id"]
 
@@ -2569,6 +2786,10 @@ async def play_item(device, item, link, loop=True):
         frames = tile_frames(frames, src_w, src_h, dev_w, dev_h, repeat_x)
 
     rotate = bool(device.get("rotate", False)) or bool(item.get("rotate", False))
+    if frames and frame_offset:
+        offset = int(frame_offset) % len(frames)
+        if offset:
+            frames = frames[offset:] + frames[:offset]
 
     if device["color"]:
         pix = encode_color(frames, dev_w, dev_h, rotate, binary=not use_pal)
@@ -2578,7 +2799,9 @@ async def play_item(device, item, link, loop=True):
         link = await ensure_link(device, link, True)
         await link.cplay(pix, palette96, fps, loop)
         _set_active_frame(did, pix, fps, dev_w, dev_h, True, get_palette(), rgb, running=True)
-        return link, {"frames": len(pix), "width": dev_w, "height": dev_h, "rgb": rgb}
+        return link, {"frames": len(pix), "width": dev_w, "height": dev_h, "rgb": rgb,
+                      "external_revision": animation.get("_external_revision"),
+                      "external_state": animation.get("_external_state", {})}
 
     hex_frames = encode_animation(frames, dev_w, dev_h, rotate)
     if all(not any(int(f[i:i+2], 16) for i in range(0, len(f), 2)) for f in hex_frames):
@@ -2586,7 +2809,9 @@ async def play_item(device, item, link, loop=True):
     link = await ensure_link(device, link, False)
     await link.play(hex_frames, fps, rgb, loop)
     _set_active_frame(did, hex_frames, fps, dev_w, dev_h, False, get_palette(), rgb, running=True)
-    return link, {"frames": len(hex_frames), "width": dev_w, "height": dev_h, "rgb": rgb}
+    return link, {"frames": len(hex_frames), "width": dev_w, "height": dev_h, "rgb": rgb,
+                  "external_revision": animation.get("_external_revision"),
+                  "external_state": animation.get("_external_state", {})}
 
 
 # ─── Runner / messaggi ──────────────────────────────────────────────────────
@@ -2763,7 +2988,13 @@ async def playlist_runner(device_id, override=None):
                     if message_queues.get(device_id):
                         link = await deliver_messages(device_id, dict(device), link)
                     log.info(f"[playlist] device={device_id} idx={idx + 1}/{len(items)} shuffle={bool(dict(device).get('shuffle'))}")
-                    link, _ = await play_item(dict(device), item, link)
+                    live_external = item_has_external_input(item)
+                    link, play_info = await play_item(dict(device), item, link)
+                    playback_started = time.monotonic()
+                    external_rev = (play_info.get("external_revision")
+                                    if live_external and play_info.get("external_revision") is not None
+                                    else (external_input_revision() if live_external else None))
+                    external_expiry = item_external_next_expiry(item) if live_external else None
                     last_idx = idx
                     if link is not None:
                         links[device_id] = link
@@ -2774,9 +3005,23 @@ async def playlist_runner(device_id, override=None):
                     refresh_seconds = item_has_seconds_clock(item)
                     refresh_clock = item_has_clock(item) and not refresh_seconds
                     shown, shown_sec = clock_key(), clock_key_seconds()
-                    tick = 0.25 if refresh_seconds else 1.0
+                    tick = 0.25 if (refresh_seconds or live_external) else 1.0
                     while time.monotonic() < end:
                         await wait_tick(device_id, min(tick, max(0.0, end - time.monotonic())))
+                        input_changed = live_external and external_input_revision() != external_rev
+                        input_expired = live_external and external_expiry is not None and time.time() >= external_expiry
+                        if input_changed or input_expired:
+                            t0 = time.monotonic()
+                            external_rev = external_input_revision()
+                            link, play_info = await play_item(dict(device), item, link, phase_started=playback_started)
+                            external_rev = (play_info.get("external_revision")
+                                            if play_info.get("external_revision") is not None
+                                            else external_input_revision())
+                            external_expiry = item_external_next_expiry(item)
+                            if link is not None:
+                                links[device_id] = link
+                            end += time.monotonic() - t0
+                            shown, shown_sec = clock_key(), clock_key_seconds()
                         if link is not None and link.closed:
                             raise PlayError(link.last_error or "Connessione persa")
                         if message_queues.get(device_id):

@@ -1,10 +1,119 @@
 """Endpoint HTTP di PixelAnim Broadcast. La logica applicativa risiede in core.py."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import Response
+import math, re, secrets
 import core as core_runtime
 from core import *  # condivide funzioni, configurazione e stato runtime
 from core import _build_stats, _bump, _format_stats_text, _invalidate_palette_cache, _invalidate_render_cache, _percentile, _pi, _render_in_pool, _scope_type, _stats, _tail_lines
 
 router = APIRouter()
+
+@router.post("/api/bitmap/import-gif")
+async def import_bitmap_gif(file: UploadFile = File(...), palette_json: str = Form("[]"), target_width: int = Form(0), target_height: int = Form(0), fit_mode: str = Form("contain"), resample: str = Form("lanczos"), crop_x: int = Form(50), crop_y: int = Form(50), preview_only: bool = Form(False)):
+    """Converte una GIF animata in frame RGBA indicizzati a 16 colori."""
+    from PIL import Image, ImageSequence
+    import io, json
+    try:
+        colors = json.loads(palette_json)
+        colors = [tuple(int(c.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)) for c in colors[:16]]
+    except Exception: colors = []
+    if not colors: colors = [(0,0,0),(255,255,255)]
+    name = (file.filename or "").lower()
+    if not name.endswith(".gif"):
+        raise HTTPException(400, "Seleziona un file GIF")
+    raw = await file.read(20 * 1024 * 1024 + 1)
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(413, "GIF troppo grande (massimo 20 MB)")
+    try:
+        im = Image.open(io.BytesIO(raw))
+        if im.format != "GIF": raise ValueError("Formato non GIF")
+        src_w, src_h = im.size
+        if src_w * src_h > 64_000_000: raise ValueError("Dimensioni GIF eccessive")
+        tw = int(target_width or min(src_w, 128)); th = int(target_height or min(src_h, 128))
+        if not (1 <= tw <= 128 and 1 <= th <= 128): raise ValueError("La dimensione di destinazione deve essere tra 1 e 128")
+        if fit_mode not in {"contain", "cover", "stretch"}: raise ValueError("Modalità di adattamento non valida")
+        crop_x = max(0, min(100, int(crop_x)))
+        crop_y = max(0, min(100, int(crop_y)))
+        filters = {"nearest": Image.Resampling.NEAREST, "box": Image.Resampling.BOX, "lanczos": Image.Resampling.LANCZOS}
+        if resample not in filters: raise ValueError("Filtro di ridimensionamento non valido")
+        method = filters[resample]
+        w, h = tw, th
+        frames, durations = [], []
+        for frame in ImageSequence.Iterator(im):
+            rgba = frame.convert("RGBA")
+            if fit_mode == "stretch":
+                rgba = rgba.resize((w, h), method)
+            else:
+                sx, sy = w / src_w, h / src_h
+                scale = min(sx, sy) if fit_mode == "contain" else max(sx, sy)
+                rw, rh = max(1, round(src_w * scale)), max(1, round(src_h * scale))
+                rgba = rgba.resize((rw, rh), method)
+                if fit_mode == "cover":
+                    left = round((rw - w) * crop_x / 100)
+                    top = round((rh - h) * crop_y / 100)
+                    rgba = rgba.crop((left, top, left + w, top + h))
+                else:
+                    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                    canvas.alpha_composite(rgba, ((w-rw)//2, (h-rh)//2))
+                    rgba = canvas
+            # Palette adattiva: 15 colori + indice 0 riservato alla trasparenza.
+            rgb = Image.new("RGB", rgba.size, (0, 0, 0)); rgb.paste(rgba, mask=rgba.getchannel("A"))
+            data = list(rgb.getdata()); alpha = list(rgba.getchannel("A").getdata())
+            out = []
+            for px, a in zip(data, alpha):
+                if a < 128: out.append("0"); continue
+                idx = min(range(1, len(colors)), key=lambda j: sum((px[k]-colors[j][k])**2 for k in range(3)))
+                out.append(format(idx, "X"))
+            frames.append("".join(out))
+            durations.append(max(20, min(10000, int(frame.info.get("duration", im.info.get("duration", 100)) or 100))))
+            if len(frames) > 1000: raise ValueError("La GIF supera il limite di 1000 frame")
+            if preview_only: break  # l'anteprima elabora solo il primo frame
+        return {"width": w, "height": h, "frames": frames, "durations": durations, "count": len(frames), "source_frames": int(getattr(im, "n_frames", len(frames)) or len(frames))}
+    except HTTPException: raise
+    except Exception as exc: raise HTTPException(400, f"GIF non leggibile: {exc}")
+
+
+def _bitmap_gif_bytes(w, h, frames, durations, palette, scale):
+    """Costruisce una GIF animata (loop infinito) da frame indicizzati a 16 colori. Indice 0 = spento = nero."""
+    from PIL import Image
+    import io
+    rgb = [(0, 0, 0)]
+    for i in range(1, 16):
+        try:
+            c = str(palette[i]).lstrip("#")
+            rgb.append(tuple(int(c[k:k+2], 16) for k in (0, 2, 4)))
+        except Exception:
+            rgb.append((255, 255, 255))
+    images = []
+    for f in frames:
+        f = str(f).ljust(w * h, "0")[: w * h]
+        im = Image.new("RGB", (w, h))
+        im.putdata([rgb[int(ch, 16)] if ch in "0123456789abcdefABCDEF" else rgb[0] for ch in f])
+        if scale > 1: im = im.resize((w * scale, h * scale), Image.Resampling.NEAREST)
+        images.append(im)
+    durs = [max(20, min(10000, int(durations[i]) if i < len(durations) else 100)) for i in range(len(images))]
+    buf = io.BytesIO()
+    images[0].save(buf, format="GIF", save_all=True, append_images=images[1:], duration=durs, loop=0, disposal=2, optimize=False)
+    return buf.getvalue()
+
+
+@router.post("/api/bitmap/export-gif")
+async def export_bitmap_gif(request: Request):
+    """Esporta i frame di un nodo Bitmap come GIF animata."""
+    try:
+        data = await request.json()
+        w, h = int(data.get("w")), int(data.get("h"))
+        frames = data.get("frames") or []
+        if not (1 <= w <= 128 and 1 <= h <= 128): raise ValueError("Dimensioni non valide (1–128)")
+        if not frames: raise ValueError("Nessun frame da esportare")
+        if len(frames) > 1000: raise ValueError("Troppi frame (massimo 1000)")
+        scale = max(1, min(32, int(data.get("scale") or 1)))
+        if w * scale > 2048 or h * scale > 2048: raise ValueError("Ingrandimento troppo alto: la GIF supererebbe 2048 px")
+        gif = _bitmap_gif_bytes(w, h, frames, data.get("durations") or [], data.get("palette") or [], scale)
+    except Exception as exc:
+        raise HTTPException(400, f"Esportazione GIF non riuscita: {exc}")
+    return Response(gif, media_type="image/gif", headers={"Content-Disposition": 'attachment; filename="bitmap.gif"'})
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home():
@@ -18,6 +127,78 @@ async def favicon():
         return FileResponse(BASE_DIR / "static" / "favicon.svg", media_type="image/svg+xml")
     except Exception:
         raise HTTPException(404)
+
+
+
+
+# ─── Input esterni globali (solo RAM) ────────────────────────────────────────
+
+def _check_input_token(authorization: str | None):
+    expected = os.getenv("INPUT_API_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(503, "API input esterni disabilitata: configura INPUT_API_TOKEN")
+    supplied = (authorization or "").strip()
+    if not supplied.startswith("Bearer ") or not secrets.compare_digest(supplied[7:].strip(), expected):
+        raise HTTPException(401, "Token API non valido")
+
+
+@router.get("/api/inputs")
+async def get_external_inputs():
+    values, revision = core_runtime.get_external_inputs()
+    metadata = {key: {"updated_at": record.get("updated_at", 0)} for key, record in values.items()}
+    return {"inputs": metadata, "revision": revision}
+
+
+@router.post("/api/inputs")
+async def update_external_inputs(values: dict[str, object], authorization: str | None = Header(default=None)):
+    _check_input_token(authorization)
+    if not isinstance(values, dict) or not values or len(values) > 100:
+        raise HTTPException(400, "Invia da 1 a 100 valori per richiesta")
+    clean = {}
+    for key, value in values.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", key):
+            raise HTTPException(400, f"Chiave non valida: {str(key)[:80]}")
+        if isinstance(value, bool):
+            raise HTTPException(400, f"Il valore di {key} deve essere numerico")
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Il valore di {key} deve essere numerico")
+        if not math.isfinite(number):
+            raise HTTPException(400, f"Il valore di {key} deve essere finito")
+        if abs(number) > 1_000_000:
+            raise HTTPException(400, f"Il valore di {key} deve essere compreso tra -1000000 e 1000000")
+        clean[key] = number
+    try:
+        revision = core_runtime.set_external_inputs(clean)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "updated": len(clean), "revision": revision}
+
+
+@router.post("/api/inputs/{key}")
+async def update_external_input(key: str, payload: dict, authorization: str | None = Header(default=None)):
+    _check_input_token(authorization)
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", key):
+        raise HTTPException(400, "Chiave non valida")
+    if set(payload) != {"value"}:
+        raise HTTPException(400, "Il body deve contenere soltanto value")
+    value = payload.get("value")
+    if isinstance(value, bool):
+        raise HTTPException(400, "Il valore deve essere numerico")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Il valore deve essere numerico")
+    if not math.isfinite(number):
+        raise HTTPException(400, "Il valore deve essere finito")
+    if abs(number) > 1_000_000:
+        raise HTTPException(400, "Il valore deve essere compreso tra -1000000 e 1000000")
+    try:
+        revision = core_runtime.set_external_inputs({key: number})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "key": key, "value": number, "revision": revision}
 
 
 @router.get("/api/animations")
@@ -451,7 +632,15 @@ async def render_graph_preview(req: GraphRenderRequest):
     algo_warn = result.get("warnings") or []
     warnings = [w["msg"] for w in algo_warn] + warnings
 
+    external_revision = result.get("_external_revision", core_runtime.external_input_revision())
+    external_state = result.get("_external_state", {})
+    external_specs = [{"id": n.get("id"), "key": (n.get("params") or {}).get("key", ""),
+                       "default": (n.get("params") or {}).get("default", 0),
+                       "timeout": (n.get("params") or {}).get("timeout", 30)}
+                      for n in core_runtime._external_nodes_in_graph(req.graph)]
     return {"total": result["total"], "width": req.width, "height": req.height,
+            "external_revision": external_revision, "external_state": external_state,
+            "external_specs": external_specs,
             "frames": ["".join(f"{v:x}" for row in fr for v in row) for fr in result["frames"]],
             "values": {nid: _squash(v) for nid, v in result["values"].items()},
             "warnings": warnings,

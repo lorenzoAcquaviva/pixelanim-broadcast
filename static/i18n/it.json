@@ -321,5 +321,10 @@
   "Il nodo Viewport riceve in ingresso un nodo Grafo e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate X e Y sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.": "Il nodo Viewport riceve in ingresso un nodo Grafo e mostra una finestra delle dimensioni dell'anteprima/board. Le coordinate X e Y sono collegabili a Tempo, Casuale, Matematica o alle uscite di Algoritmico per spostare dinamicamente la finestra.",
   "Il Viewport accetta come sorgente un nodo Grafo.": "Il Viewport accetta come sorgente un nodo Grafo.",
   "Ingresso IN": "Ingresso IN",
-  "Viewport": "Viewport"
+  "Viewport": "Viewport",
+  "Input esterno": "Input esterno",
+  "Chiave globale": "Chiave globale",
+  "Valore predefinito": "Valore predefinito",
+  "Timeout (s, 0 = mai)": "Timeout (s, 0 = mai)",
+  "Trascina o clicca": "Trascina o clicca"
 }

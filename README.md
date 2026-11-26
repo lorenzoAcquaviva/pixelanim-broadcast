@@ -121,12 +121,41 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install fastapi "uvicorn[standard]" httpx websockets pydantic tzdata
 export DEVICES_DB=./data/devices.db
 export PIXELANIM_URL=http://localhost:9900
+export INPUT_API_TOKEN="$(openssl rand -hex 32)"
 uvicorn main:app --host 0.0.0.0 --port 9910
 ```
 
 Open `http://localhost:9910`.
 
 ---
+
+## Global external inputs
+
+The **External input** node reads a numeric value shared by all graphs and devices. It can be connected to numeric blue ports, including `in1` and `in2` on Algorithm nodes. A graph stores only the key, fallback value, and timeout. Values received through the API live in RAM only and are cleared when Broadcast restarts.
+
+Set `INPUT_API_TOKEN` in `.env` to a long random secret (generate one with `openssl rand -hex 32`). If empty, write endpoints are disabled. Export the same token in your shell before using the `curl` examples. Updates require `Authorization: Bearer <token>`.
+
+Single value:
+
+```bash
+curl -X POST http://localhost:9910/api/inputs/room_temperature \
+  -H "Authorization: Bearer $INPUT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"value":23.5}'
+```
+
+Batch update:
+
+```bash
+curl -X POST http://localhost:9910/api/inputs \
+  -H "Authorization: Bearer $INPUT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"room_temperature":23.5,"humidity":62,"brightness":80}'
+```
+
+`GET /api/inputs` returns input keys, update timestamps and the registry revision (not the numeric values). Keys may contain letters, digits, `_`, `.`, `:` and `-`. Values must be finite numbers between -1,000,000 and 1,000,000. The registry supports up to 256 keys and 100 values per request.
+
+The node timeout is configurable; `0` means no expiry. When a value expires, the node uses its fallback value. The editor preview polls for updates, and active boards re-render when a value changes or expires while preserving the animation's current frame phase instead of jumping back to frame zero. Graphs using external inputs bypass the render cache.
 
 ## Configuration
 
@@ -135,6 +164,7 @@ All settings are controlled through environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PIXELANIM_URL` | Required | HTTP address of the PixelAnim backend, reachable from the Broadcast container |
+| `INPUT_API_TOKEN` | empty (write API disabled) | Bearer token required to update global external inputs |
 | `PIXELANIM_WS` | derived from `PIXELANIM_URL` + `/api/esp/stream` | Optional WebSocket address override |
 | `DEVICES_DB` | `/data/devices.db` | SQLite database path |
 | `TZ` | `Europe/Rome` | Time zone used by the clock |
@@ -232,6 +262,7 @@ The **Viewport** node takes a saved Graph as its source and crops a window match
 
 ### Navigation and layout
 
+- The left palette groups nodes into collapsible categories. Click a node to add it, or drag it onto the canvas to choose its position.
 - Drag the background to pan; use the **mouse wheel** to zoom (the dotted background helps indicate scale). Canvas size: 6000×4000.
 - **⌖ Frame all** displays all nodes.
 - Each node can be **collapsed** (▾/▸), **renamed** (double-click its header or use ✎), **duplicated** (⧉) and **deleted** (✕). **Collapse/Expand** applies to all nodes.
@@ -255,7 +286,7 @@ Double-click a port to disconnect it. Connections that create **loops** are reje
 | **Gradient** | X, Y, width, height, direction, two colours, repetitions |
 | **8×8 Bitmap** | X, Y, scale (1–16), 8×8 drawing, colour |
 | **Circle** | X, Y, radius, filled, colour |
-| **Text** | text, static/scrolling, alignment, X, Y, colour |
+| **Text** | text (static or bound to a numeric value), static/scrolling, alignment, X, Y, colour |
 | **Time** | HH:MM, hours, minutes, seconds, HH:MM:SS or alternating hours/minutes; 5×7 or 3×5 font; blinking colon; X, Y, colour |
 | **Graph** | Embeds **another saved graph** (see below): graph, size, X, Y, colours or monochrome |
 | **Animation** | Inserts a **PixelAnim animation** (see below): animation, X, Y, colours or monochrome, slowdown |
@@ -407,3 +438,6 @@ FastAPI's interactive documentation is available at `/docs`.
 - To add a board dimension supported by the firmware, update `FIRMWARE_DIMS` in `core.py`.
 - Adding a node type requires two changes: the server-side definition (`GRAPH_*_TYPES`, validation in `check_graph` and rendering) and the entry in the frontend's `NG_TYPES`, plus the button in the **Add** menu.
 - The node canvas has the same dimensions in the frontend (`NG_CW`, `NG_CH`) and backend (`GRAPH_CANVAS_W`, `GRAPH_CANVAS_H`): if you change them, update both.
+### Bitmap node
+
+The Bitmap node supports full-colour pixel art from 1×1 up to 128×128 pixels and up to 5 frames. New frames are blank. Its editor includes continuous brush drawing, eraser, line, circle, rectangle, triangle, and onion skin for adjacent frames. Connect a Bitmap directly to a Viewport to select the portion displayed on the board.

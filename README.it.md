@@ -90,6 +90,8 @@ Esempio di backend su un altro server della LAN:
 ```dotenv
 PIXELANIM_URL=http://192.168.1.50:9900
 PIXELANIM_WS=
+# Token segreto per scrivere gli input esterni (genera un valore casuale)
+INPUT_API_TOKEN=INSERISCI_UN_TOKEN_LUNGO_E_CASUALE
 ```
 
 Il backend deve essere raggiungibile e risolvibile **dal container Broadcast**, non soltanto dal browser o dal computer da cui apri la pagina.
@@ -119,12 +121,41 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install fastapi "uvicorn[standard]" httpx websockets pydantic tzdata
 export DEVICES_DB=./data/devices.db
 export PIXELANIM_URL=http://localhost:9900
+export INPUT_API_TOKEN="$(openssl rand -hex 32)"
 uvicorn main:app --host 0.0.0.0 --port 9910
 ```
 
 Apri `http://localhost:9910`.
 
 ---
+
+## Input esterni globali
+
+Il nodo **Input esterno** legge un valore numerico condiviso da tutti i grafi e da tutte le board. Può essere collegato alle porte numeriche blu, anche agli ingressi `in1` e `in2` del nodo Algoritmico. Nel grafo vengono salvati soltanto la chiave, il valore predefinito e il timeout: i valori ricevuti dall'API restano esclusivamente in RAM e vengono persi al riavvio. Quando il valore cambia durante la riproduzione, il nuovo rendering viene riallineato al frame temporale corrente, senza ripartire dal primo frame.
+
+Configura `INPUT_API_TOKEN` in `.env` (un token lungo e casuale, generabile con `openssl rand -hex 32`). Se la variabile è vuota, gli endpoint di scrittura restano disabilitati. Per usare gli esempi `curl`, esporta nel terminale lo stesso token configurato in `.env`. Gli aggiornamenti richiedono `Authorization: Bearer <token>`.
+
+Invio di un singolo valore:
+
+```bash
+curl -X POST http://localhost:9910/api/inputs/temperatura_sala \
+  -H "Authorization: Bearer $INPUT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"value":23.5}'
+```
+
+Invio di più valori in un'unica richiesta:
+
+```bash
+curl -X POST http://localhost:9910/api/inputs \
+  -H "Authorization: Bearer $INPUT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"temperatura_sala":23.5,"umidita":62,"luminosita":80}'
+```
+
+`GET /api/inputs` restituisce le chiavi, gli orari di aggiornamento e la revisione del registro, senza esporre i valori numerici. Le chiavi ammesse contengono lettere, numeri, `_`, `.`, `:` e `-`; i valori devono essere numeri finiti compresi tra -1.000.000 e 1.000.000. Il limite è 256 chiavi globali e 100 valori per richiesta.
+
+Il timeout è configurabile in ogni nodo: `0` significa nessuna scadenza. Quando il dato scade viene usato il valore predefinito. L'anteprima controlla gli aggiornamenti periodicamente; le board in riproduzione ricalcolano il grafo quando arriva un nuovo dato o quando un valore scade, mantenendo la fase temporale dell'animazione invece di ripartire dal primo frame. I grafi con input esterni non usano la cache dei render.
 
 ## Configurazione
 
@@ -134,6 +165,7 @@ Tutto si regola con variabili d'ambiente:
 |---|---|---|
 | `PIXELANIM_URL` | Obbligatoria | Indirizzo HTTP del backend PixelAnim, raggiungibile dal container Broadcast |
 | `PIXELANIM_WS` | derivata da `PIXELANIM_URL` + `/api/esp/stream` | Override facoltativo dell'indirizzo WebSocket |
+| `INPUT_API_TOKEN` | vuota (API disabilitata) | Token Bearer obbligatorio per aggiornare gli input esterni |
 | `DEVICES_DB` | `/data/devices.db` | Percorso del database SQLite |
 | `TZ` | `Europe/Rome` | Fuso orario usato dall'orologio |
 | `BROADCAST_PORT` | `9910` | Porta pubblicata sull'host Docker |
@@ -230,6 +262,7 @@ Il nodo **Viewport** riceve un Grafo salvato e ne ritaglia una finestra delle di
 
 ### Muoversi e organizzare
 
+- La palette a sinistra raggruppa i nodi in categorie comprimibili. Clicca un nodo per aggiungerlo oppure trascinalo sul canvas per posizionarlo.
 - Trascina lo sfondo per spostarti, **rotella** per lo zoom (sfondo a punti per capire la scala). Canvas 6000×4000.
 - **⌖ Inquadra** mostra tutti i nodi.
 - Ogni nodo si può **comprimere** (▾/▸), **rinominare** (doppio clic sull'intestazione o ✎), **duplicare** (⧉) ed **eliminare** (✕). **Comprimi/Espandi** agisce su tutti i nodi.
@@ -253,7 +286,7 @@ Doppio clic su una porta per scollegarla. I collegamenti che creano **anelli** s
 | **Gradiente** | X, Y, Largh., Alt., direzione, due colori, ripetizioni |
 | **Bitmap 8×8** | X, Y, scala (1–16), disegno 8×8, colore |
 | **Cerchio** | X, Y, raggio, pieno, colore |
-| **Testo** | testo, fisso/scorrevole, allineamento, X, Y, colore |
+| **Testo** | testo (statico o collegato a un valore numerico), fisso/scorrevole, allineamento, X, Y, colore |
 | **Ora** | HH:MM, ore, minuti, secondi, HH:MM:SS o ore/minuti alternati; font 5×7 o 3×5; due punti lampeggianti; X, Y, colore |
 | **Grafo** | Incorpora un **altro grafo salvato** (vedi sotto): grafo, dimensione, X, Y, colori o monocromatico |
 | **Animazione** | Inserisce un'**animazione di PixelAnim** (vedi sotto): animazione, X, Y, colori o monocromatico, rallentamento |
@@ -404,3 +437,9 @@ La documentazione interattiva generata da FastAPI è su `/docs`.
 - Per aggiungere una dimensione di board supportata dal firmware, aggiorna `FIRMWARE_DIMS` in `core.py`.
 - Per aggiungere un tipo di nodo servono due modifiche: la definizione lato server (`GRAPH_*_TYPES`, validazione in `check_graph` e rendering) e la voce in `NG_TYPES` del frontend, più il pulsante nel menu **Aggiungi**.
 - Il canvas dei nodi ha le stesse dimensioni nel frontend (`NG_CW`, `NG_CH`) e nel backend (`GRAPH_CANVAS_W`, `GRAPH_CANVAS_H`): se le cambi, cambiale in entrambi.
+### Nodo Bitmap
+
+Il nodo Bitmap supporta immagini pixel-art a colori da 1×1 fino a 128×128 pixel e fino a 5 frame. I nuovi frame sono vuoti. Nell'editor sono disponibili pennello continuo, gomma, linea, cerchio, rettangolo, triangolo e onion skin dei frame adiacenti. Il nodo Bitmap può essere collegato direttamente a una Viewport per selezionare la porzione da visualizzare sulla board.
+
+### Importazione GIF nel nodo Bitmap
+Il nodo Bitmap può importare GIF animate tramite il pulsante **GIF**. Sono importati tutti i frame (massimo 1000), la trasparenza diventa pixel spento e i colori vengono associati alla palette attiva. Le dimensioni vengono ridotte proporzionalmente solo se superano 128×128. Le durate originali sono conservate. I campi IN/OUT permettono di mantenere un intervallo temporale; la durata del singolo frame è modificabile con **Durata frame**.
